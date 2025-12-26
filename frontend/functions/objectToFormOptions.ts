@@ -1,19 +1,14 @@
-import {map} from 'lodash';
+import {map} from "es-toolkit/compat";
 import {computed, ComputedRef, MaybeRefOrGetter, toValue} from "vue";
-
-export interface FormOption {
-    value: string | number,
-    text: string,
-    description?: string
-}
+import {ApiFormNestedOptions, ApiFormSimpleOptions} from "~/entities/ApiInterfaces.ts";
 
 type SimpleFormOptionObject = Record<(string | number), string>
 
-export type SimpleFormOptionInput = FormOption[] | SimpleFormOptionObject
+export type SimpleFormOptionInput = ApiFormSimpleOptions | SimpleFormOptionObject
 
 export function objectToSimpleFormOptions(
     initial: MaybeRefOrGetter<SimpleFormOptionInput>,
-): ComputedRef<FormOption[]> {
+): ComputedRef<ApiFormSimpleOptions> {
     return computed(() => {
         const array = toValue(initial);
 
@@ -28,19 +23,13 @@ export function objectToSimpleFormOptions(
     });
 }
 
-export interface FormOptionGroup {
-    options: FormOption[],
-    label: string,
-}
-
 type NestedFormOptionObject = SimpleFormOptionObject | Record<(string | number), SimpleFormOptionObject>
 
-export type NestedFormOptionInput = (FormOption | FormOptionGroup)[] | NestedFormOptionObject;
-export type NestedFormOptionOutput = (FormOption | FormOptionGroup)[];
+export type NestedFormOptionInput = ApiFormNestedOptions | NestedFormOptionObject;
 
 export function objectToNestedFormOptions(
     initial: MaybeRefOrGetter<NestedFormOptionInput>
-): ComputedRef<NestedFormOptionOutput> {
+): ComputedRef<ApiFormNestedOptions> {
     return computed(() => {
         const array = toValue(initial);
 

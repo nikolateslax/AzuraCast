@@ -95,7 +95,7 @@
                             </legend>
 
                             <p
-                                v-if="version"
+                                v-if="record.version"
                                 class="text-success card-text"
                             >
                                 {{ langInstalledVersion }}
@@ -115,7 +115,7 @@
                         />
 
                         <div
-                            v-if="version"
+                            v-if="record.version"
                             class="buttons block-buttons mt-3"
                         >
                             <button
@@ -137,17 +137,23 @@
 import FlowUpload from "~/components/Common/FlowUpload.vue";
 import {computed, onMounted, ref} from "vue";
 import {useTranslate} from "~/vendor/gettext";
-import {useNotify} from "~/functions/useNotify";
+import {useNotify} from "~/components/Common/Toasts/useNotify.ts";
 import {useAxios} from "~/vendor/axios";
 import Loading from "~/components/Common/Loading.vue";
 import CardPage from "~/components/Common/CardPage.vue";
-import {getApiUrl} from "~/router";
-import {useDialog} from "~/functions/useDialog.ts";
+import {useDialog} from "~/components/Common/Dialogs/useDialog.ts";
+import {ApiAdminStereoToolStatus} from "~/entities/ApiInterfaces.ts";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
+const {getApiUrl} = useApiRouter();
 const apiUrl = getApiUrl('/admin/stereo_tool');
 
+type Row = ApiAdminStereoToolStatus;
+
 const isLoading = ref(true);
-const version = ref(null);
+const record = ref<Row>({
+    version: null
+});
 
 const {$gettext} = useTranslate();
 
@@ -155,38 +161,44 @@ const langInstalledVersion = computed(() => {
     return $gettext(
         'Stereo Tool version %{version} is currently installed.',
         {
-            version: version.value
+            version: record.value.version ?? 'N/A'
         }
     );
 });
 
 const {notifyError} = useNotify();
 
-const onError = (_file, message) => {
-    notifyError(message);
+const onError = (_: unknown, message: string | null) => {
+    if (message !== null) {
+        notifyError(message);
+    }
 };
 
 const {axios} = useAxios();
 
-const relist = () => {
+const relist = async () => {
     isLoading.value = true;
-    void axios.get(apiUrl.value).then((resp) => {
-        version.value = resp.data.version;
-        isLoading.value = false;
-    });
+
+    const {data} = await axios.get<Row>(apiUrl.value);
+    record.value = data;
+    isLoading.value = false;
 };
 
 const {confirmDelete} = useDialog();
 
-const doDelete = () => {
-    void confirmDelete({
+const doDelete = async () => {
+    const {value} = await confirmDelete({
         title: $gettext('Uninstall Stereo Tool?'),
         confirmButtonText: $gettext('Uninstall')
-    }).then((result) => {
-        if (result.value) {
-            void axios.delete(apiUrl.value).then(relist);
-        }
     });
+
+    if (!value) {
+        return;
+    }
+
+    await axios.delete(apiUrl.value);
+
+    await relist();
 }
 
 onMounted(relist);

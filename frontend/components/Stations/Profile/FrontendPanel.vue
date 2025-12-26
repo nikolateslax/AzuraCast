@@ -5,29 +5,34 @@
         header-id="hdr_frontend"
     >
         <template #header="{id}">
-            <h3
-                :id="id"
-                class="card-title"
-            >
-                {{ $gettext('Broadcasting Service') }}
-
-                <running-badge :running="frontendRunning" />
-                <br>
-                <small>{{ frontendName }}</small>
-            </h3>
+            <div class="d-flex align-items-center">
+                <h3
+                    :id="id"
+                    class="flex-fill card-title my-0"
+                >
+                    {{ $gettext('Broadcasting Service') }}
+                    <br>
+                    <small>{{ frontendName }}</small>
+                </h3>
+                <div class="flex-shrink-0">
+                    <running-badge :running="profileData.services.frontendRunning"/>
+                </div>
+            </div>
         </template>
 
-        <template v-if="userAllowedForStation(StationPermission.Broadcasting)">
+        <template v-if="userAllowedForStation(StationPermissions.Broadcasting)">
             <div
                 class="collapse"
                 :class="(credentialsVisible) ? 'show' : ''"
+                id="collapseFrontendCredentials"
+                v-on="collapseListeners"
             >
                 <table class="table table-striped table-responsive">
                     <tbody>
                         <tr class="align-middle">
                             <td>
                                 <a
-                                    :href="frontendAdminUri"
+                                    :href="profileData.frontendAdminUri"
                                     target="_blank"
                                 >
                                     {{ $gettext('Administration') }}
@@ -40,12 +45,12 @@
                                 </div>
                                 <div>
                                     {{ $gettext('Password:') }}
-                                    <span class="text-monospace">{{ frontendAdminPassword }}</span>
+                                    <span class="text-monospace">{{ profileData.frontendAdminPassword }}</span>
                                 </div>
                             </td>
                             <td class="px-0">
                                 <copy-to-clipboard-button
-                                    :text="frontendAdminPassword"
+                                    :text="profileData.frontendAdminPassword"
                                     hide-text
                                 />
                             </td>
@@ -58,7 +63,7 @@
                                 class="ps-0"
                                 colspan="2"
                             >
-                                {{ frontendPort }}
+                                {{ profileData.frontendPort }}
                                 <div
                                     v-if="isShoutcast"
                                     class="form-text"
@@ -80,12 +85,12 @@
                                 </div>
                                 <div>
                                     {{ $gettext('Password:') }}
-                                    <span class="text-monospace">{{ frontendSourcePassword }}</span>
+                                    <span class="text-monospace">{{ profileData.frontendSourcePassword }}</span>
                                 </div>
                             </td>
                             <td class="px-0">
                                 <copy-to-clipboard-button
-                                    :text="frontendSourcePassword"
+                                    :text="profileData.frontendSourcePassword"
                                     hide-text
                                 />
                             </td>
@@ -101,12 +106,12 @@
                                 </div>
                                 <div>
                                     {{ $gettext('Password:') }}
-                                    <span class="text-monospace">{{ frontendRelayPassword }}</span>
+                                    <span class="text-monospace">{{ profileData.frontendRelayPassword }}</span>
                                 </div>
                             </td>
                             <td class="px-0">
                                 <copy-to-clipboard-button
-                                    :text="frontendRelayPassword"
+                                    :text="profileData.frontendRelayPassword"
                                     hide-text
                                 />
                             </td>
@@ -117,47 +122,53 @@
         </template>
 
         <template
-            v-if="userAllowedForStation(StationPermission.Broadcasting)"
+            v-if="userAllowedForStation(StationPermissions.Broadcasting)"
             #footer_actions
         >
-            <a
+            <button
+                type="button"
                 class="btn btn-link text-primary"
-                @click.prevent="credentialsVisible = !credentialsVisible"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapseFrontendCredentials"
+                :aria-expanded="credentialsVisible ? 'true' : 'false'"
+                aria-controls="collapseFrontendCredentials"
             >
-                <icon :icon="IconMoreHoriz" />
+                <icon-ic-more-horiz/>
                 <span>
                     {{ langShowHideCredentials }}
                 </span>
-            </a>
-            <template v-if="hasStarted">
+            </button>
+            <template v-if="stationData.hasStarted">
                 <button
                     type="button"
                     class="btn btn-link text-secondary"
                     @click="doRestart"
                 >
-                    <icon :icon="IconUpdate" />
+                    <icon-ic-update/>
+
                     <span>
                         {{ $gettext('Restart') }}
                     </span>
                 </button>
                 <button
-                    v-if="!frontendRunning"
+                    v-if="!profileData.services.frontendRunning"
                     type="button"
                     class="btn btn-link text-success"
                     @click="doStart()"
                 >
-                    <icon :icon="IconPlay" />
+                    <icon-ic-play-arrow/>
                     <span>
                         {{ $gettext('Start') }}
                     </span>
                 </button>
                 <button
-                    v-if="frontendRunning"
+                    v-if="profileData.services.frontendRunning"
                     type="button"
                     class="btn btn-link text-danger"
                     @click="doStop()"
                 >
-                    <icon :icon="IconStop" />
+                    <icon-ic-stop/>
+
                     <span>
                         {{ $gettext('Stop') }}
                     </span>
@@ -168,43 +179,44 @@
 </template>
 
 <script setup lang="ts">
-import CopyToClipboardButton from '~/components/Common/CopyToClipboardButton.vue';
-import Icon from '~/components/Common/Icon.vue';
+import CopyToClipboardButton from "~/components/Common/CopyToClipboardButton.vue";
 import RunningBadge from "~/components/Common/Badges/RunningBadge.vue";
 import {computed} from "vue";
 import {useTranslate} from "~/vendor/gettext";
 import CardPage from "~/components/Common/CardPage.vue";
-import {StationPermission, userAllowedForStation} from "~/acl";
+import {useUserAllowedForStation} from "~/functions/useUserallowedForStation.ts";
 import useOptionalStorage from "~/functions/useOptionalStorage";
-import {IconMoreHoriz, IconPlay, IconStop, IconUpdate} from "~/components/Common/icons";
 import useMakeApiCall from "~/components/Stations/Profile/useMakeApiCall.ts";
+import {FrontendAdapters, StationPermissions} from "~/entities/ApiInterfaces.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {useStationProfileData} from "~/components/Stations/Profile/useProfileQuery.ts";
+import IconIcMoreHoriz from "~icons/ic/baseline-more-horiz";
+import IconIcPlayArrow from "~icons/ic/baseline-play-arrow";
+import IconIcStop from "~icons/ic/baseline-stop";
+import IconIcUpdate from "~icons/ic/baseline-update";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
-import {FrontendAdapter} from "~/entities/RadioAdapters.ts";
+const stationData = useStationData();
+const profileData = useStationProfileData();
 
-export interface ProfileFrontendPanelParentProps {
-    frontendType: FrontendAdapter,
-    frontendAdminUri: string,
-    frontendAdminPassword: string,
-    frontendSourcePassword: string,
-    frontendRelayPassword: string,
-    frontendPort: number,
-    frontendRestartUri: string,
-    frontendStartUri: string,
-    frontendStopUri: string,
-    hasStarted: boolean
-}
+const {userAllowedForStation} = useUserAllowedForStation();
 
-defineOptions({
-    inheritAttrs: false
-});
+const {getStationApiUrl} = useApiRouter();
 
-interface ProfileFrontendPanelProps extends ProfileFrontendPanelParentProps {
-    frontendRunning: boolean,
-}
-
-const props = defineProps<ProfileFrontendPanelProps>();
+const frontendRestartUri = getStationApiUrl('/frontend/restart');
+const frontendStartUri = getStationApiUrl('/frontend/start');
+const frontendStopUri = getStationApiUrl('/frontend/stop');
 
 const credentialsVisible = useOptionalStorage<boolean>('station_show_frontend_credentials', false);
+
+const collapseListeners = {
+    ['hidden.bs.collapse']: () => {
+        credentialsVisible.value = false;
+    },
+    ['shown.bs.collapse']: () => {
+        credentialsVisible.value = true;
+    },
+};
 
 const {$gettext} = useTranslate();
 
@@ -215,14 +227,14 @@ const langShowHideCredentials = computed(() => {
 });
 
 const frontendName = computed(() => {
-    switch (props.frontendType) {
-        case FrontendAdapter.Icecast:
+    switch (stationData.value.frontendType) {
+        case FrontendAdapters.Icecast:
             return 'Icecast';
 
-        case FrontendAdapter.Rsas:
+        case FrontendAdapters.Rsas:
             return 'Rocket Streaming Audio Server (RSAS)';
 
-        case FrontendAdapter.Shoutcast:
+        case FrontendAdapters.Shoutcast:
             return 'Shoutcast';
 
         default:
@@ -231,11 +243,11 @@ const frontendName = computed(() => {
 });
 
 const isShoutcast = computed(() => {
-    return props.frontendType === FrontendAdapter.Shoutcast;
+    return stationData.value.frontendType === FrontendAdapters.Shoutcast;
 });
 
 const doRestart = useMakeApiCall(
-    props.frontendRestartUri,
+    frontendRestartUri,
     {
         title: $gettext('Restart service?'),
         confirmButtonText: $gettext('Restart')
@@ -243,7 +255,7 @@ const doRestart = useMakeApiCall(
 );
 
 const doStart = useMakeApiCall(
-    props.frontendStartUri,
+    frontendStartUri,
     {
         title: $gettext('Start service?'),
         confirmButtonText: $gettext('Start'),
@@ -252,7 +264,7 @@ const doStart = useMakeApiCall(
 );
 
 const doStop = useMakeApiCall(
-    props.frontendStopUri,
+    frontendStopUri,
     {
         title: $gettext('Stop service?'),
         confirmButtonText: $gettext('Stop'),

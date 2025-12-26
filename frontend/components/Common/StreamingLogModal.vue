@@ -47,15 +47,15 @@ import Modal from "~/components/Common/Modal.vue";
 import FixedLogView from "~/components/Common/FixedLogView.vue";
 import {useHasModal} from "~/functions/useHasModal.ts";
 
-const logUrl = ref('');
-const isStreaming = ref(true);
+const logUrl = ref<string>('');
+const isStreaming = ref<boolean>(true);
 
 const $modal = useTemplateRef('$modal');
 const {show: showModal, hide} = useHasModal($modal);
 
 const $logView = useTemplateRef('$logView');
 
-const show = (newLogUrl, newIsStreaming = true) => {
+const show = (newLogUrl: string, newIsStreaming: boolean = true) => {
     logUrl.value = newLogUrl;
     isStreaming.value = newIsStreaming;
     showModal();
@@ -64,7 +64,7 @@ const show = (newLogUrl, newIsStreaming = true) => {
 const clipboard = useClipboard();
 
 const doCopy = () => {
-    void clipboard.copy($logView.value?.getContents());
+    void clipboard.copy($logView.value?.getContents() ?? '');
 };
 
 const clearContents = () => {

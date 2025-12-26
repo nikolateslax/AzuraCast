@@ -14,10 +14,12 @@
 
 <script setup lang="ts">
 import {ref, toRef, watch} from "vue";
-import {useAxios} from "~/vendor/axios";
+import {useAxios} from "~/vendor/axios.ts";
 import Loading from "~/components/Common/Loading.vue";
 import CodeMirror from "vue-codemirror6";
-import useTheme from "~/functions/theme";
+import {useTheme} from "~/functions/theme.ts";
+import {ApiLogContents} from "~/entities/ApiInterfaces.ts";
+import {storeToRefs} from "pinia";
 
 const props = defineProps<{
     logUrl: string
@@ -26,7 +28,7 @@ const props = defineProps<{
 const isLoading = ref(false);
 const logs = ref('');
 
-const {isDark} = useTheme();
+const {isDark} = storeToRefs(useTheme());
 
 const {axios} = useAxios();
 
@@ -35,16 +37,20 @@ watch(toRef(props, 'logUrl'), (newLogUrl) => {
     logs.value = '';
 
     if (null !== newLogUrl) {
-        void axios({
-            method: 'GET',
-            url: props.logUrl
-        }).then((resp) => {
-            if (resp.data.contents !== '') {
-                logs.value = resp.data.contents;
+        void (async () => {
+            try {
+                const {data} = await axios.request<ApiLogContents>({
+                    method: 'GET',
+                    url: props.logUrl
+                });
+
+                if (data.contents !== '') {
+                    logs.value = data.contents;
+                }
+            } finally {
+                isLoading.value = false;
             }
-        }).finally(() => {
-            isLoading.value = false;
-        });
+        })();
     }
 }, {immediate: true});
 

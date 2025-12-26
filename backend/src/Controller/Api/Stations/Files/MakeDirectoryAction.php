@@ -4,20 +4,42 @@ declare(strict_types=1);
 
 namespace App\Controller\Api\Stations\Files;
 
+use App\Cache\MediaListCache;
 use App\Controller\SingleActionInterface;
 use App\Entity\Api\Error;
 use App\Entity\Api\Status;
 use App\Flysystem\StationFilesystems;
 use App\Http\Response;
 use App\Http\ServerRequest;
+use App\OpenApi;
 use App\Utilities\Types;
 use League\Flysystem\UnableToCreateDirectory;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 
-final class MakeDirectoryAction implements SingleActionInterface
+#[
+    OA\Post(
+        path: '/station/{station_id}/files/mkdir',
+        operationId: 'postStationFilesMkdir',
+        summary: 'Create a directory in a station media directory.',
+        tags: [OpenApi::TAG_STATIONS_MEDIA],
+        parameters: [
+            new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
+        ],
+        responses: [
+            // TODO: API Response Body
+            new OpenApi\Response\Success(),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\NotFound(),
+            new OpenApi\Response\GenericError(),
+        ]
+    )
+]
+final readonly class MakeDirectoryAction implements SingleActionInterface
 {
     public function __construct(
-        private readonly StationFilesystems $stationFilesystems
+        private MediaListCache $mediaListCache,
+        private StationFilesystems $stationFilesystems
     ) {
     }
 
@@ -46,6 +68,8 @@ final class MakeDirectoryAction implements SingleActionInterface
             return $response->withStatus(400)
                 ->withJson(new Error(400, $e->getMessage()));
         }
+
+        $this->mediaListCache->clearCache($station);
 
         return $response->withJson(Status::created());
     }

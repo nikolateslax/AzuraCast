@@ -9,6 +9,7 @@ use App\Enums\SupportedLocales;
 use App\Http\HttpFactory;
 use App\Utilities\Logger as AppLogger;
 use DI;
+use Dotenv\Dotenv;
 use Monolog\ErrorHandler;
 use Monolog\Logger;
 use Monolog\Registry;
@@ -16,6 +17,7 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Slim\App;
 use Slim\Factory\ServerRequestCreatorFactory;
 use Slim\Handlers\Strategies\RequestResponse;
+use Throwable;
 
 /**
  * @phpstan-type AppWithContainer App<DI\Container>
@@ -106,10 +108,6 @@ final class AppFactory
         $containerBuilder->useAutowiring(true);
         $containerBuilder->useAttributes(true);
 
-        if ($environment->isProduction()) {
-            $containerBuilder->enableCompilation($environment->getTempDirectory());
-        }
-
         $containerBuilder->addDefinitions($diDefinitions);
 
         $containerBuilder->addDefinitions(dirname(__DIR__) . '/config/services.php');
@@ -144,6 +142,25 @@ final class AppFactory
         $_ENV = getenv();
         $rawEnvironment = array_merge(array_filter($_ENV), $rawEnvironment);
         $environment = new Environment($rawEnvironment);
+
+        // Try to load from .env file
+        if ($environment->isDevelopment() || !$environment->isDocker()) {
+            $envFile = $environment->getBaseDirectory() . '/azuracast.env';
+
+            if (file_exists($envFile)) {
+                $fileContents = file_get_contents($envFile);
+
+                if (!empty($fileContents)) {
+                    try {
+                        $envFileContents = array_filter(Dotenv::parse($fileContents));
+                        $rawEnvironment = array_merge($rawEnvironment, $envFileContents);
+
+                        $environment = new Environment($rawEnvironment);
+                    } catch (Throwable) {
+                    }
+                }
+            }
+        }
 
         self::applyPhpSettings($environment);
 

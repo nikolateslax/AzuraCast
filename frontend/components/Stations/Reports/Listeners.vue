@@ -16,7 +16,8 @@
                                 :href="exportUrl"
                                 target="_blank"
                             >
-                                <icon :icon="IconDownload" />
+                                <icon-ic-cloud-download/>
+
                                 <span>
                                     {{ $gettext('Download CSV') }}
                                 </span>
@@ -30,7 +31,9 @@
                                 v-model="dateRange"
                                 :options="{
                                     timezone: timezone,
-                                    enableTimePicker: true,
+                                    timeConfig: {
+                                        enableTimePicker: true
+                                    },
                                     minDate: minDate,
                                     maxDate: maxDate,
                                 }"
@@ -92,7 +95,7 @@
                                 </small>
                             </div>
                             <div class="col-12 h3">
-                                {{ listeners.length }}
+                                {{ filteredListeners.length }}
                             </div>
                             <div class="col-12 text-start text-md-end h5">
                                 {{ $gettext('Total Listener Hours') }}
@@ -114,30 +117,28 @@
                         id="station_listeners"
                         ref="$dataTable"
                         paginated
-                        handle-client-side
                         :fields="fields"
-                        :items="filteredListeners"
+                        :provider="listenersItemProvider"
                         select-fields
-                        @refresh-clicked="updateListeners()"
                     >
                         <!-- eslint-disable-next-line -->
                         <template #cell(device.client)="row">
                             <div class="d-flex align-items-center">
                                 <div class="flex-shrink-0 pe-2">
                                     <span v-if="row.item.device.is_bot">
-                                        <icon :icon="IconRouter" />
+                                        <icon-ic-router/>
                                         <span class="visually-hidden">
                                             {{ $gettext('Bot/Crawler') }}
                                         </span>
                                     </span>
                                     <span v-else-if="row.item.device.is_mobile">
-                                        <icon :icon="IconSmartphone" />
+                                        <icon-ic-smartphone/>
                                         <span class="visually-hidden">
                                             {{ $gettext('Mobile') }}
                                         </span>
                                     </span>
                                     <span v-else>
-                                        <icon :icon="IconDesktopWindows" />
+                                        <icon-ic-desktop-windows/>
                                         <span class="visually-hidden">
                                             {{ $gettext('Desktop') }}
                                         </span>
@@ -179,7 +180,7 @@
                 </div>
                 <div
                     class="card-body card-padding-sm text-muted"
-                    v-html="attribution"
+                    v-html="ipGeoAttribution"
                 />
             </div>
         </div>
@@ -187,37 +188,41 @@
 </template>
 
 <script setup lang="ts">
-import StationReportsListenersMap from "./Listeners/Map.vue";
-import Icon from "~/components/Common/Icon.vue";
+import StationReportsListenersMap from "~/components/Stations/Reports/Listeners/Map.vue";
 import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
-import DateRangeDropdown from "~/components/Common/DateRangeDropdown.vue";
-import {computed, ComputedRef, nextTick, onMounted, Ref, ref, ShallowRef, shallowRef, useTemplateRef, watch} from "vue";
+import DateRangeDropdown, {DateRange} from "~/components/Common/DateRangeDropdown.vue";
+import {computed, ComputedRef, Ref, ref, useTemplateRef} from "vue";
 import {useTranslate} from "~/vendor/gettext";
 import {useAxios} from "~/vendor/axios";
-import {getStationApiUrl} from "~/router";
-import {IconDesktopWindows, IconDownload, IconRouter, IconSmartphone} from "~/components/Common/icons";
 import useHasDatatable from "~/functions/useHasDatatable";
-import {ListenerFilters, ListenerTypeFilter} from "~/components/Stations/Reports/Listeners/listenerFilters.ts";
-import {filter} from "lodash";
+import {ListenerFilters, ListenerTypeFilters} from "~/components/Stations/Reports/Listeners/listenerFilters.ts";
+import {filter} from "es-toolkit/compat";
 import formatTime from "~/functions/formatTime.ts";
-import ListenerFiltersBar from "./Listeners/FiltersBar.vue";
-import {ApiListener} from "~/entities/ApiInterfaces.ts";
+import ListenerFiltersBar from "~/components/Stations/Reports/Listeners/FiltersBar.vue";
 import useStationDateTimeFormatter from "~/functions/useStationDateTimeFormatter.ts";
 import {useLuxon} from "~/vendor/luxon.ts";
-import {useAzuraCastStation} from "~/vendor/azuracast.ts";
+import {useQuery, useQueryClient} from "@tanstack/vue-query";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import {useClientItemProvider} from "~/functions/dataTable/useClientItemProvider.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {toRefs} from "@vueuse/core";
+import {ListenerRequired} from "~/entities/StationReports.ts";
+import IconIcDesktopWindows from "~icons/ic/baseline-desktop-windows";
+import IconIcCloudDownload from "~icons/ic/baseline-cloud-download";
+import IconIcRouter from "~icons/ic/baseline-router";
+import IconIcSmartphone from "~icons/ic/baseline-smartphone";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
-defineProps<{
-    attribution: string
-}>();
-
+const {getStationApiUrl} = useApiRouter();
 const apiUrl = getStationApiUrl('/listeners');
 
 const isLive = ref<boolean>(true);
-const listeners: ShallowRef<ApiListener[]> = shallowRef([]);
 
 const {DateTime} = useLuxon();
 
-const {timezone} = useAzuraCastStation();
+const stationData = useStationData();
+const {timezone, ipGeoAttribution} = toRefs(stationData);
+
 const {
     now,
     formatTimestampAsDateTime
@@ -228,7 +233,7 @@ const nowTz = now();
 const minDate = nowTz.minus({years: 5}).toJSDate();
 const maxDate = nowTz.plus({days: 5}).toJSDate();
 
-const dateRange = ref({
+const dateRange = ref<DateRange>({
     startDate: nowTz.minus({days: 1}).toJSDate(),
     endDate: nowTz.toJSDate()
 });
@@ -236,12 +241,14 @@ const dateRange = ref({
 const filters: Ref<ListenerFilters> = ref({
     minLength: null,
     maxLength: null,
-    type: ListenerTypeFilter.All,
+    type: ListenerTypeFilters.All,
 });
 
 const {$gettext} = useTranslate();
 
-const fields: DataTableField[] = [
+type Row = ListenerRequired;
+
+const fields: DataTableField<Row>[] = [
     {
         key: 'ip', label: $gettext('IP'), sortable: false,
         selectable: true,
@@ -251,7 +258,7 @@ const fields: DataTableField[] = [
         key: 'connected_time',
         label: $gettext('Time'),
         sortable: true,
-        formatter: (_col, _key, item) => {
+        formatter: (_col, _key, item): string => {
             return formatTime(item.connected_time)
         },
         selectable: true,
@@ -261,8 +268,8 @@ const fields: DataTableField[] = [
         key: 'connected_time_sec',
         label: $gettext('Time (sec)'),
         sortable: false,
-        formatter: (_col, _key, item) => {
-            return item.connected_time;
+        formatter: (_col, _key, item): string => {
+            return String(item.connected_time);
         },
         selectable: true,
         visible: false
@@ -308,7 +315,7 @@ const fields: DataTableField[] = [
         key: 'location',
         label: $gettext('Location'),
         sortable: true,
-        sorter: (row: ApiListener): string => {
+        sorter: (row: Row): string => {
             return row.location?.country + ' ' + row.location?.region + ' ' + row.location?.city;
         },
         selectable: true,
@@ -322,21 +329,18 @@ const exportUrl = computed(() => {
     exportUrlParams.set('format', 'csv');
 
     if (!isLive.value) {
-        exportUrlParams.set('start', DateTime.fromJSDate(dateRange.value.startDate).toISO());
-        exportUrlParams.set('end', DateTime.fromJSDate(dateRange.value.endDate).toISO());
+        const startDate = DateTime.fromJSDate(dateRange.value.startDate);
+        if (startDate.isValid) {
+            exportUrlParams.set('start', startDate.toISO());
+        }
+
+        const endDate = DateTime.fromJSDate(dateRange.value.endDate);
+        if (endDate.isValid) {
+            exportUrlParams.set('end', endDate.toISO());
+        }
     }
 
     return exportUrl.toString();
-});
-
-const totalListenerHours = computed(() => {
-    let tlh_seconds = 0;
-    filteredListeners.value.forEach(function (listener) {
-        tlh_seconds += listener.connected_time;
-    });
-
-    const tlh_hours = tlh_seconds / 3600;
-    return Math.round((tlh_hours + 0.00001) * 100) / 100;
 });
 
 const {axios} = useAxios();
@@ -347,17 +351,48 @@ const {navigate} = useHasDatatable($dataTable);
 const hasFilters: ComputedRef<boolean> = computed(() => {
     return null !== filters.value.minLength
         || null !== filters.value.maxLength
-        || ListenerTypeFilter.All !== filters.value.type;
+        || ListenerTypeFilters.All !== filters.value.type;
 });
 
-const filteredListeners: ComputedRef<ApiListener[]> = computed(() => {
+const {data: allListeners, isLoading} = useQuery<Row[]>({
+    queryKey: queryKeyWithStation(
+        [
+            QueryKeys.StationReports,
+            'listeners',
+            computed(() => (isLive.value) ? 'live' : dateRange.value)
+        ],
+    ),
+    queryFn: async ({signal}) => {
+        const params: {
+            [key: string]: any
+        } = {};
+
+        if (!isLive.value) {
+            params.start = DateTime.fromJSDate(dateRange.value.startDate).toISO();
+            params.end = DateTime.fromJSDate(dateRange.value.endDate).toISO();
+        }
+
+        const {data} = await axios.get<Row[]>(apiUrl.value, {signal, params});
+        return data;
+    },
+    staleTime: 10 * 1000,
+    refetchInterval: (query) => {
+        const queryKey = query.options?.queryKey ?? [];
+        const broadcastType = [...queryKey].pop();
+        return (broadcastType === 'live') ? 15000 : false;
+    }
+});
+
+const filteredListeners = computed<Row[]>(() => {
+    const listeners = allListeners.value ?? [];
+
     if (!hasFilters.value) {
-        return listeners.value;
+        return listeners;
     }
 
     return filter(
-        listeners.value,
-        (row: ApiListener) => {
+        listeners,
+        (row: Row) => {
             const connectedTime: number = row.connected_time;
             if (null !== filters.value.minLength && connectedTime < filters.value.minLength) {
                 return false;
@@ -365,10 +400,10 @@ const filteredListeners: ComputedRef<ApiListener[]> = computed(() => {
             if (null !== filters.value.maxLength && connectedTime > filters.value.maxLength) {
                 return false;
             }
-            if (ListenerTypeFilter.All !== filters.value.type) {
-                if (ListenerTypeFilter.Mobile === filters.value.type && !row.device.is_mobile) {
+            if (ListenerTypeFilters.All !== filters.value.type) {
+                if (ListenerTypeFilters.Mobile === filters.value.type && !row.device.is_mobile) {
                     return false;
-                } else if (ListenerTypeFilter.Desktop === filters.value.type && row.device.is_mobile) {
+                } else if (ListenerTypeFilters.Desktop === filters.value.type && row.device.is_mobile) {
                     return false;
                 }
             }
@@ -378,36 +413,39 @@ const filteredListeners: ComputedRef<ApiListener[]> = computed(() => {
     );
 });
 
-const updateListeners = () => {
-    const params: {
-        [key: string]: any
-    } = {};
+const queryClient = useQueryClient();
 
-    if (!isLive.value) {
-        params.start = DateTime.fromJSDate(dateRange.value.startDate).toISO();
-        params.end = DateTime.fromJSDate(dateRange.value.endDate).toISO();
+const listenersItemProvider = useClientItemProvider<Row>(
+    filteredListeners,
+    isLoading,
+    undefined,
+    async (): Promise<void> => {
+        await queryClient.invalidateQueries({
+            queryKey: queryKeyWithStation(
+                [
+                    QueryKeys.StationReports,
+                    'listeners'
+                ],
+            )
+        });
+    }
+);
+
+const totalListenerHours = computed(() => {
+    let tlh_seconds = 0;
+
+    const listeners = allListeners.value ?? [];
+
+    for (const listener of listeners) {
+        tlh_seconds += listener.connected_time;
     }
 
-    axios.get(apiUrl.value, {params: params}).then((resp) => {
-        listeners.value = resp.data;
-        navigate();
-
-        if (isLive.value) {
-            setTimeout(updateListeners, (!document.hidden) ? 15000 : 30000);
-        }
-    }).catch((error) => {
-        if (isLive.value && (!error.response || error.response.data.code !== 403)) {
-            setTimeout(updateListeners, (!document.hidden) ? 30000 : 120000);
-        }
-    });
-};
-
-watch(dateRange, updateListeners);
-
-onMounted(updateListeners);
+    const tlh_hours = tlh_seconds / 3600;
+    return Math.round((tlh_hours + 0.00001) * 100) / 100;
+});
 
 const setIsLive = (newValue: boolean) => {
     isLive.value = newValue;
-    void nextTick(updateListeners);
+    navigate();
 };
 </script>

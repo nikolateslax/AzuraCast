@@ -28,7 +28,7 @@
                 class="btn btn-sm btn-primary"
                 @click="add"
             >
-                <icon :icon="IconAdd" />
+                <icon-ic-add/>
                 <span>
                     {{ $gettext('Add Schedule Item') }}
                 </span>
@@ -38,11 +38,10 @@
 </template>
 
 <script setup lang="ts">
-import Icon from '~/components/Common/Icon.vue';
 import PlaylistsFormScheduleRow from "~/components/Stations/Playlists/Form/ScheduleRow.vue";
 import FormMarkup from "~/components/Form/FormMarkup.vue";
 import Tab from "~/components/Common/Tab.vue";
-import {IconAdd} from "~/components/Common/icons";
+import IconIcAdd from "~icons/ic/baseline-add";
 
 const scheduleItems = defineModel<Array<any>>('scheduleItems', {
     default: () => []
@@ -59,7 +58,7 @@ const add = () => {
     });
 };
 
-const remove = (index) => {
+const remove = (index: number) => {
     scheduleItems.value.splice(index, 1);
 };
 </script>

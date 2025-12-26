@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Controller\Api\Stations\Art;
 
 use App\Controller\SingleActionInterface;
+use App\Customization;
 use App\Entity\Repository\StationMediaRepository;
-use App\Entity\Repository\StationRepository;
 use App\Entity\Station;
 use App\Entity\StationMedia;
 use App\Flysystem\ExtendedFilesystemInterface;
@@ -20,8 +20,9 @@ use Psr\Http\Message\ResponseInterface;
 #[OA\Get(
     path: '/station/{station_id}/art/{media_id}',
     operationId: 'getMediaArt',
-    description: 'Returns the album art for a song, or a generic image.',
-    tags: ['Stations: Media'],
+    summary: 'Returns the album art for a song, or a generic image.',
+    security: [],
+    tags: [OpenApi::TAG_PUBLIC_STATIONS],
     parameters: [
         new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
         new OA\Parameter(
@@ -33,22 +34,20 @@ use Psr\Http\Message\ResponseInterface;
         ),
     ],
     responses: [
-        new OA\Response(
-            response: 200,
+        new OpenApi\Response\SuccessWithImage(
             description: 'The requested album artwork'
         ),
-        new OA\Response(
-            response: 404,
+        new OpenApi\Response\Redirect(
             description: 'Image not found; generic filler image.'
         ),
     ]
 )]
-final class GetArtAction implements SingleActionInterface
+final readonly class GetArtAction implements SingleActionInterface
 {
     public function __construct(
-        private readonly StationRepository $stationRepo,
-        private readonly StationMediaRepository $mediaRepo,
-        private readonly StationFilesystems $stationFilesystems
+        private StationMediaRepository $mediaRepo,
+        private StationFilesystems $stationFilesystems,
+        private Customization $customization
     ) {
     }
 
@@ -75,7 +74,7 @@ final class GetArtAction implements SingleActionInterface
             );
         }
 
-        return $response->withRedirect((string)$this->stationRepo->getDefaultAlbumArtUrl($station), 302);
+        return $response->withRedirect((string)$this->customization->getDefaultAlbumArtUrl($station), 302);
     }
 
     private function getMediaPath(
@@ -96,13 +95,13 @@ final class GetArtAction implements SingleActionInterface
             return null;
         }
 
-        $mediaPath = StationMedia::getArtPath($media->getUniqueId());
+        $mediaPath = StationMedia::getArtPath($media->unique_id);
         if ($fsMedia->fileExists($mediaPath)) {
             return $mediaPath;
         }
 
         $folderPath = StationMedia::getFolderArtPath(
-            StationMedia::getFolderHashForPath($media->getPath())
+            StationMedia::getFolderHashForPath($media->path)
         );
         if ($fsMedia->fileExists($folderPath)) {
             return $folderPath;

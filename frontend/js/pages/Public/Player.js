@@ -1,5 +1,4 @@
-import Player from '~/components/Public/Player.vue';
 import initApp from "~/layout";
-import useMinimalLayout from "~/layouts/MinimalLayout";
+import EmbedPlayer from "~/components/Public/EmbedPlayer.vue";
 
-initApp(useMinimalLayout(Player));
+initApp(EmbedPlayer);

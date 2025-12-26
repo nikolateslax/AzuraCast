@@ -43,6 +43,8 @@
         <div
             ref="$fileDropTarget"
             class="file-drop-target"
+            @dragenter="onDragEnter"
+            @dragleave="onDragLeave"
         >
             {{ $gettext('Drag file(s) here to upload or') }}
             <button
@@ -50,7 +52,8 @@
                 type="button"
                 class="file-upload btn btn-primary text-center ms-1"
             >
-                <icon :icon="IconUpload"/>
+                <icon-ic-cloud-upload/>
+
                 <span>
                     {{ $gettext('Select File') }}
                 </span>
@@ -61,31 +64,18 @@
 </template>
 
 <script setup lang="ts">
-import formatFileSize from '~/functions/formatFileSize';
-import Icon from './Icon.vue';
-import {defaultsDeep, forEach, toInteger} from 'lodash';
+import formatFileSize from "~/functions/formatFileSize";
+import {defaultsDeep, forEach, toInteger} from "es-toolkit/compat";
 import {onMounted, onUnmounted, reactive, useTemplateRef} from "vue";
 import Flow from "@flowjs/flow.js";
 import {useAzuraCast} from "~/vendor/azuracast";
 import {useTranslate} from "~/vendor/gettext";
-import {IconUpload} from "~/components/Common/icons";
-import {useEventListener} from "@vueuse/core";
+import IconIcCloudUpload from "~icons/ic/baseline-cloud-upload";
 
-const props = withDefaults(
-    defineProps<{
-        targetUrl: string,
-        allowMultiple?: boolean,
-        directoryMode?: boolean,
-        validMimeTypes?: string[],
-        flowConfiguration?: object,
-    }>(),
-    {
-        allowMultiple: false,
-        directoryMode: false,
-        validMimeTypes: () => ['*'],
-        flowConfiguration: () => ({}),
-    }
-);
+export interface UploadResponseBody {
+    originalFilename: string,
+    uploadedPath: string
+}
 
 interface FlowFile {
     uniqueIdentifier: string,
@@ -106,9 +96,29 @@ interface OriginalFlowFile {
     progress(): number
 }
 
-const emit = defineEmits(['complete', 'success', 'error']);
+const props = withDefaults(
+    defineProps<{
+        targetUrl: string,
+        allowMultiple?: boolean,
+        directoryMode?: boolean,
+        validMimeTypes?: string[],
+        flowConfiguration?: object,
+    }>(),
+    {
+        allowMultiple: false,
+        directoryMode: false,
+        validMimeTypes: () => ['*'],
+        flowConfiguration: () => ({}),
+    }
+);
 
-let flow = null;
+const emit = defineEmits<{
+    (e: 'complete'): void,
+    (e: 'success', file: OriginalFlowFile, message: UploadResponseBody | null): void,
+    (e: 'error', file: OriginalFlowFile, message: string | null): void,
+}>();
+
+let flow: Flow | null = null;
 
 const files = reactive<{
     value: {
@@ -128,7 +138,6 @@ const files = reactive<{
             isVisible: true,
             isCompleted: false,
             progressPercent: 0,
-            error: null,
             targetUrl: props.targetUrl
         };
     },
@@ -153,21 +162,21 @@ const {apiCsrf} = useAzuraCast();
 
 const {$gettext} = useTranslate();
 
-useEventListener($fileDropTarget, 'dragenter', (e: DragEvent) => {
+const onDragEnter = (e: DragEvent) => {
     const targetElement = e.target as HTMLDivElement;
 
     if (targetElement.classList.contains('file-drop-target')) {
         targetElement.classList.add('drag_over');
     }
-});
+};
 
-useEventListener($fileDropTarget, 'dragleave', (e: DragEvent) => {
+const onDragLeave = (e: DragEvent) => {
     const targetElement = e.target as HTMLDivElement;
 
     if (targetElement.classList.contains('file-drop-target')) {
         targetElement.classList.remove('drag_over');
     }
-});
+};
 
 onMounted(() => {
     const defaultConfig = {
@@ -190,28 +199,38 @@ onMounted(() => {
 
     flow = new Flow(config);
 
+    // @ts-expect-error FlowJS accepts non-array value but typing doesn't.
     flow.assignBrowse($fileBrowseTarget.value, props.directoryMode, !props.allowMultiple, {
         accept: props.validMimeTypes.join(',')
     });
-    flow.assignDrop($fileDropTarget.value);
 
+    if ($fileDropTarget.value) {
+        flow.assignDrop($fileDropTarget.value);
+    }
+    
     flow.on('fileAdded', (file: OriginalFlowFile) => {
         files.push(file);
         return true;
     });
 
     flow.on('filesSubmitted', () => {
-        flow.upload();
+        flow?.upload();
     });
 
     flow.on('fileProgress', (file: OriginalFlowFile) => {
         files.get(file).progressPercent = toInteger(file.progress() * 100);
     });
 
-    flow.on('fileSuccess', (file: OriginalFlowFile, message) => {
+    flow.on('fileSuccess', (file: OriginalFlowFile, message: string) => {
         files.get(file).isCompleted = true;
 
-        const messageJson = JSON.parse(message);
+        let messageJson: UploadResponseBody | null;
+        try {
+            messageJson = JSON.parse(message) as UploadResponseBody;
+        } catch {
+            messageJson = null;
+        }
+
         emit('success', file, messageJson);
     });
 

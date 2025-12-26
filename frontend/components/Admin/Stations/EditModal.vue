@@ -45,19 +45,20 @@
 </template>
 
 <script setup lang="ts">
-import AdminStationsForm, {StationFormParentProps} from "~/components/Admin/Stations/StationForm.vue";
+import AdminStationsForm from "~/components/Admin/Stations/StationForm.vue";
 import InvisibleSubmitButton from "~/components/Common/InvisibleSubmitButton.vue";
 import {computed, ref, useTemplateRef} from "vue";
 import {useTranslate} from "~/vendor/gettext";
 import Modal from "~/components/Common/Modal.vue";
 import {useHasModal} from "~/functions/useHasModal.ts";
 import {HasRelistEmit} from "~/functions/useBaseEditModal.ts";
+import {ApiAdminVueStationsFormProps} from "~/entities/ApiInterfaces.ts";
 
 defineOptions({
     inheritAttrs: false
 });
 
-interface StationEditModalProps extends StationFormParentProps {
+interface StationEditModalProps extends ApiAdminVueStationsFormProps {
     createUrl: string
 }
 
@@ -65,7 +66,7 @@ const props = defineProps<StationEditModalProps>();
 
 const emit = defineEmits<HasRelistEmit>();
 
-const editUrl = ref(null);
+const editUrl = ref<string | null>(null);
 const disableSaveButton = ref(true);
 
 const isEditMode = computed(() => {
@@ -83,7 +84,7 @@ const langTitle = computed(() => {
 const $modal = useTemplateRef('$modal');
 const {show, hide} = useHasModal($modal);
 
-const onValidUpdate = (newValue) => {
+const onValidUpdate = (newValue: boolean) => {
     disableSaveButton.value = !newValue;
 };
 
@@ -92,7 +93,7 @@ const create = () => {
     show();
 };
 
-const edit = (recordUrl) => {
+const edit = (recordUrl: string) => {
     editUrl.value = recordUrl;
     show();
 };

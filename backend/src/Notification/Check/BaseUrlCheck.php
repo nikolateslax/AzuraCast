@@ -6,9 +6,9 @@ namespace App\Notification\Check;
 
 use App\Container\SettingsAwareTrait;
 use App\Entity\Api\Notification;
+use App\Enums\FlashLevels;
 use App\Enums\GlobalPermissions;
 use App\Event\GetNotifications;
-use App\Session\FlashLevels;
 
 final class BaseUrlCheck
 {
@@ -28,7 +28,7 @@ final class BaseUrlCheck
         $settings = $this->readSettings();
 
         // Base URL mismatch doesn't happen if this setting is enabled.
-        if ($settings->getPreferBrowserUrl()) {
+        if ($settings->prefer_browser_url) {
             return;
         }
 
@@ -47,18 +47,20 @@ final class BaseUrlCheck
             );
             // phpcs:enable Generic.Files.LineLength
 
-            $notification = new Notification();
-            $notification->title = sprintf(
-                __('Your "Base URL" setting (%s) does not match the URL you are currently using (%s).'),
-                (string)$baseUriWithoutRequest,
-                (string)$baseUriWithRequest
+            $event->addNotification(
+                new Notification(
+                    id: 'notification-base-url',
+                    title: sprintf(
+                        __('Your "Base URL" setting (%s) does not match the URL you are currently using (%s).'),
+                        (string)$baseUriWithoutRequest,
+                        (string)$baseUriWithRequest
+                    ),
+                    body: implode(' ', $notificationBodyParts),
+                    type: FlashLevels::Warning,
+                    actionLabel: __('System Settings'),
+                    actionUrl: $router->named('admin:settings:index')
+                )
             );
-            $notification->body = implode(' ', $notificationBodyParts);
-            $notification->type = FlashLevels::Warning->value;
-            $notification->actionLabel = __('System Settings');
-            $notification->actionUrl = $router->named('admin:settings:index');
-
-            $event->addNotification($notification);
         }
     }
 }

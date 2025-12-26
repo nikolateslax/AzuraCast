@@ -9,7 +9,8 @@
                 class="btn dropdown-toggle"
                 v-bind="$attrs"
             >
-                <icon :icon="IconDateRange" />
+                <icon-ic-date-range/>
+
                 <span>
                     {{ value }}
                 </span>
@@ -19,14 +20,16 @@
 </template>
 
 <script setup lang="ts">
-import VueDatePicker, {VueDatePickerProps} from '@vuepic/vue-datepicker';
-import Icon from "./Icon.vue";
-import useTheme from "~/functions/theme";
-import {useTranslate} from "~/vendor/gettext";
+import {RootProps, VueDatePicker} from "@vuepic/vue-datepicker";
+import {useTheme} from "~/functions/theme.ts";
+import {useTranslate} from "~/vendor/gettext.ts";
 import {computed} from "vue";
-import {useAzuraCast} from "~/vendor/azuracast";
-import {useLuxon} from "~/vendor/luxon";
-import {IconDateRange} from "~/components/Common/icons";
+import {useLuxon} from "~/vendor/luxon.ts";
+import {storeToRefs} from "pinia";
+import {isString} from "es-toolkit";
+import IconIcDateRange from "~icons/ic/baseline-date-range";
+import {getDateFnLocale} from "~/functions/getDateFnLocale.ts";
+import {merge} from "es-toolkit/compat";
 
 defineOptions({
     inheritAttrs: false
@@ -38,7 +41,7 @@ export interface DateRange {
 }
 
 const props = defineProps<{
-    options?: Partial<VueDatePickerProps>,
+    options?: Partial<RootProps>,
     modelValue?: DateRange
 }>();
 
@@ -46,19 +49,28 @@ const emit = defineEmits<{
     (e: 'update:modelValue', modelValue: DateRange): void
 }>();
 
-const {isDark} = useTheme();
+const {isDark} = storeToRefs(useTheme());
 
-const {localeWithDashes} = useAzuraCast();
 const {DateTime} = useLuxon();
 
-const dateRange = computed({
+type DateRangeTuple = Date[] | null;
+
+const dateRange = computed<DateRangeTuple>({
     get() {
+        if (!props.modelValue) {
+            return null;
+        }
+
         return [
-            props.modelValue?.startDate ?? null,
-            props.modelValue?.endDate ?? null,
+            props.modelValue.startDate,
+            props.modelValue.endDate,
         ]
     },
     set(newValue) {
+        if (newValue === null) {
+            return;
+        }
+
         const newRange = {
             startDate: newValue[0],
             endDate: newValue[1]
@@ -70,10 +82,18 @@ const dateRange = computed({
 
 const {$gettext} = useTranslate();
 
+const getTimezone = (options?: Partial<RootProps>): string => {
+    if (options !== undefined && 'timezone' in options && options.timezone) {
+        if (isString(options.timezone)) {
+            return options.timezone;
+        }
+    }
+
+    return 'UTC';
+}
+
 const ranges = computed(() => {
-    const tz: string = (props.options && "timezone" in props.options)
-        ? (typeof props.options.timezone === "string" ? props.options.timezone : props.options.timezone.timezone)
-        : 'UTC';
+    const tz = getTimezone(props.options);
 
     const nowTz = DateTime.now().setZone(tz);
     const nowAtMidnightDate = nowTz.endOf('day').toJSDate();
@@ -138,20 +158,25 @@ const ranges = computed(() => {
     ];
 });
 
-const vueDatePickerOptions = computed<VueDatePickerProps>(() => {
-    return {
+const vueDatePickerOptions = computed<RootProps>(() => {
+    return merge({
         dark: isDark.value,
         range: {
             partialRange: false
         },
-        enableTimePicker: false,
+        timeConfig: {
+            enableTimePicker: false,
+        },
         presetDates: ranges.value,
-        locale: localeWithDashes,
-        selectText: $gettext('Select'),
-        cancelText: $gettext('Cancel'),
-        nowButtonLabel: $gettext('Now'),
-        clearable: false,
-        ...props.options,
-    }
+        locale: getDateFnLocale(),
+        actionRow: {
+            selectBtnLabel: $gettext('Select'),
+            cancelBtnLabel: $gettext('Cancel'),
+            nowBtnLabel: $gettext('Now')
+        },
+        inputAttrs: {
+            clearable: false
+        }
+    }, props.options);
 });
 </script>

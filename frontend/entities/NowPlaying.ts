@@ -1,4 +1,4 @@
-import {ApiNowPlaying} from "./ApiInterfaces";
+import {ApiNowPlaying} from "~/entities/ApiInterfaces";
 
 const npEmpty: ApiNowPlaying = {
     station: {
@@ -13,8 +13,15 @@ const npEmpty: ApiNowPlaying = {
         playlist_pls_url: '',
         playlist_m3u_url: '',
         is_public: true,
+        requests_enabled: false,
         mounts: [],
-        remotes: []
+        remotes: [],
+        timezone: 'UTC',
+        public_player_url: '',
+        hls_enabled: false,
+        hls_is_default: false,
+        hls_url: '',
+        hls_listeners: 0
     },
     listeners: {
         current: 0,
@@ -24,7 +31,8 @@ const npEmpty: ApiNowPlaying = {
     live: {
         is_live: false,
         streamer_name: '',
-        broadcast_start: null
+        broadcast_start: null,
+        art: null
     },
     now_playing: {
         elapsed: 0,
@@ -49,6 +57,7 @@ const npEmpty: ApiNowPlaying = {
     },
     playing_next: {
         cued_at: 0,
+        played_at: 0,
         duration: 0,
         playlist: 'default',
         is_request: false,
@@ -64,7 +73,9 @@ const npEmpty: ApiNowPlaying = {
             custom_fields: []
         }
     },
-    song_history: []
+    song_history: [],
+    is_online: false,
+    cache: 'station'
 };
 
 export default npEmpty;

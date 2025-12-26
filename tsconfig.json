@@ -9,6 +9,9 @@
         "*"
       ]
     },
+    "types": [
+      "unplugin-icons/types/vue"
+    ],
     "target": "ES2020",
     "useDefineForClassFields": true,
     "module": "ESNext",
@@ -26,11 +29,12 @@
     "noEmit": true,
     "jsx": "preserve",
     /* Linting */
-    "strict": false,
+    "strict": true,
     "allowJs": true,
     "noUnusedLocals": false,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true
   },
   "include": [
     "frontend/**/*.ts",

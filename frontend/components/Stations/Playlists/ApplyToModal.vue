@@ -21,7 +21,7 @@
             <div class="col-md-8">
                 <form-group-checkbox
                     id="form_applyto_copy_playlist"
-                    :field="v$.copyPlaylist"
+                    :field="r$.copyPlaylist"
                 >
                     <template #label>
                         {{ $gettext('Create New Playlist for Each Folder') }}
@@ -33,8 +33,7 @@
         <div style="max-height: 300px; overflow-y: scroll">
             <data-table
                 :fields="fields"
-                :items="applyToResults.directories"
-                handle-client-side
+                :provider="itemProvider"
                 :show-toolbar="false"
                 selectable
                 @row-selected="onRowSelected"
@@ -62,19 +61,33 @@
 </template>
 
 <script setup lang="ts">
-import DataTable, {DataTableField} from '~/components/Common/DataTable.vue';
-import {ref, useTemplateRef} from "vue";
+import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
+import {computed, ref, useTemplateRef} from "vue";
 import {useTranslate} from "~/vendor/gettext";
-import {useNotify} from "~/functions/useNotify";
+import {useNotify} from "~/components/Common/Toasts/useNotify.ts";
 import {useAxios} from "~/vendor/axios";
 import FormMarkup from "~/components/Form/FormMarkup.vue";
-import {useVuelidateOnForm} from '~/functions/useVuelidateOnForm';
-import {map} from "lodash";
+import {map} from "es-toolkit/compat";
 import {useResettableRef} from "~/functions/useResettableRef";
 import FormGroupCheckbox from "~/components/Form/FormGroupCheckbox.vue";
 import Modal from "~/components/Common/Modal.vue";
 import {useHasModal} from "~/functions/useHasModal.ts";
 import {HasRelistEmit} from "~/functions/useBaseEditModal.ts";
+import {useClientItemProvider} from "~/functions/dataTable/useClientItemProvider.ts";
+import {useAppRegle} from "~/vendor/regle.ts";
+
+type ApplyToDirectory = {
+    path: string,
+    name: string
+}
+
+type ApplyToRow = {
+    playlist: {
+        id: number | null,
+        name: string
+    },
+    directories: ApplyToDirectory[]
+}
 
 const emit = defineEmits<HasRelistEmit>();
 
@@ -83,7 +96,7 @@ const {show, hide} = useHasModal($modal);
 
 const {$gettext} = useTranslate();
 
-const fields: DataTableField[] = [
+const fields: DataTableField<ApplyToDirectory>[] = [
     {
         key: 'name',
         isRowHeader: true,
@@ -91,9 +104,10 @@ const fields: DataTableField[] = [
     }
 ];
 
-const loading = ref(true);
-const applyToUrl = ref(null);
-const {record: applyToResults, reset: resetApplyToResults} = useResettableRef({
+const loading = ref<boolean>(true);
+const applyToUrl = ref<string | null>(null);
+
+const {record: applyToResults, reset: resetApplyToResults} = useResettableRef<ApplyToRow>({
     playlist: {
         id: null,
         name: ''
@@ -101,18 +115,25 @@ const {record: applyToResults, reset: resetApplyToResults} = useResettableRef({
     directories: [],
 });
 
-const selectedDirs = ref([]);
-const onRowSelected = (items) => {
+const itemProvider = useClientItemProvider<ApplyToDirectory>(
+    computed(() => applyToResults.value.directories)
+);
+
+const selectedDirs = ref<string[]>([]);
+const onRowSelected = (items: ApplyToDirectory[]) => {
     selectedDirs.value = map(items, 'path');
 };
 
-const {form, v$, resetForm, ifValid} = useVuelidateOnForm(
+const {record: form, reset: resetForm} = useResettableRef({
+    copyPlaylist: false
+});
+
+const {r$} = useAppRegle(
+    form,
     {
         copyPlaylist: {}
     },
-    {
-        copyPlaylist: false
-    }
+    {}
 );
 
 const clearContents = () => {
@@ -121,37 +142,45 @@ const clearContents = () => {
 
     resetApplyToResults();
     resetForm();
+    r$.$reset();
 };
 
 const {axios} = useAxios();
 
-const open = (newApplyToUrl) => {
+const open = (newApplyToUrl: string) => {
     clearContents();
 
     applyToUrl.value = newApplyToUrl;
     loading.value = true;
     show();
 
-    void axios.get(newApplyToUrl).then((resp) => {
-        applyToResults.value = resp.data;
+    void (async () => {
+        const {data} = await axios.get(newApplyToUrl);
+
+        applyToResults.value = data;
         loading.value = false;
-    });
+    })();
 };
 
 const {notifySuccess} = useNotify();
 
-const save = () => {
-    ifValid(() => {
-        void axios.put(applyToUrl.value, {
+const save = async () => {
+    const {valid} = await r$.$validate();
+    if (!valid || !applyToUrl.value) {
+        return;
+    }
+
+    try {
+        await axios.put(applyToUrl.value, {
             ...form.value,
             directories: selectedDirs.value
-        }).then(() => {
-            notifySuccess($gettext('Playlist successfully applied to folders.'));
-        }).finally(() => {
-            hide();
-            emit('relist');
         });
-    });
+
+        notifySuccess($gettext('Playlist successfully applied to folders.'));
+    } finally {
+        hide();
+        emit('relist');
+    }
 };
 
 defineExpose({

@@ -16,7 +16,8 @@
                         class="btn btn-dark"
                         @click="doChangePassword"
                     >
-                        <icon :icon="IconVpnKey" />
+                        <icon-ic-vpn-key/>
+
                         <span>
                             {{ $gettext('Change Password') }}
                         </span>
@@ -26,10 +27,10 @@
         </template>
 
         <loading :loading="securityLoading">
-            <div class="card-body">
+            <div class="card-body" v-if="security">
                 <h5>
                     {{ $gettext('Two-Factor Authentication') }}
-                    <enabled-badge :enabled="security.twoFactorEnabled" />
+                    <enabled-badge :enabled="security.two_factor_enabled"/>
                 </h5>
 
                 <p class="card-text mt-2">
@@ -40,12 +41,13 @@
 
                 <div class="buttons">
                     <button
-                        v-if="security.twoFactorEnabled"
+                        v-if="security.two_factor_enabled"
                         type="button"
                         class="btn btn-danger"
                         @click="disableTwoFactor"
                     >
-                        <icon :icon="IconLockOpen" />
+                        <icon-ic-lock-open/>
+
                         <span>
                             {{ $gettext('Disable Two-Factor') }}
                         </span>
@@ -56,7 +58,7 @@
                         class="btn btn-success"
                         @click="enableTwoFactor"
                     >
-                        <icon :icon="IconLock" />
+                        <icon-ic-lock/>
                         <span>
                             {{ $gettext('Enable Two-Factor') }}
                         </span>
@@ -82,7 +84,8 @@
                     class="btn btn-primary"
                     @click="doAddPasskey"
                 >
-                    <icon :icon="IconAdd" />
+                    <icon-ic-add/>
+
                     <span>
                         {{ $gettext('Add New Passkey') }}
                     </span>
@@ -92,10 +95,9 @@
 
         <data-table
             id="account_passkeys"
-            ref="$dataTable"
             :show-toolbar="false"
             :fields="passkeyFields"
-            :api-url="passkeysApiUrl"
+            :provider="passkeysItemProvider"
         >
             <template #cell(actions)="row">
                 <div class="btn-group btn-group-sm">
@@ -116,48 +118,60 @@
     <account-two-factor-modal
         ref="$twoFactorModal"
         :two-factor-url="twoFactorUrl"
-        @relist="reloadSecurity"
+        @relist="() => reloadSecurity()"
     />
 
     <passkey-modal
         ref="$passkeyModal"
-        @relist="reloadPasskeys"
+        @relist="() => reloadPasskeys()"
     />
 </template>
 
 <script setup lang="ts">
-
-import {IconAdd, IconLock, IconLockOpen, IconVpnKey} from "~/components/Common/icons.ts";
 import CardPage from "~/components/Common/CardPage.vue";
 import EnabledBadge from "~/components/Common/Badges/EnabledBadge.vue";
-import Icon from "~/components/Common/Icon.vue";
 import Loading from "~/components/Common/Loading.vue";
 import AccountTwoFactorModal from "~/components/Account/TwoFactorModal.vue";
 import AccountChangePasswordModal from "~/components/Account/ChangePasswordModal.vue";
 import {useAxios} from "~/vendor/axios.ts";
-import {getApiUrl} from "~/router.ts";
-import useRefreshableAsyncState from "~/functions/useRefreshableAsyncState.ts";
 import {useTemplateRef} from "vue";
 import useConfirmAndDelete from "~/functions/useConfirmAndDelete.ts";
 import {useTranslate} from "~/vendor/gettext.ts";
 import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
-import useHasDatatable from "~/functions/useHasDatatable.ts";
 import PasskeyModal from "~/components/Account/PasskeyModal.vue";
+import {ApiAccountTwoFactorStatus} from "~/entities/ApiInterfaces.ts";
+import {useApiItemProvider} from "~/functions/dataTable/useApiItemProvider.ts";
+import {QueryKeys} from "~/entities/Queries.ts";
+import {useQuery} from "@tanstack/vue-query";
+import IconIcAdd from "~icons/ic/baseline-add";
+import IconIcLock from "~icons/ic/baseline-lock";
+import IconIcLockOpen from "~icons/ic/baseline-lock-open";
+import IconIcVpnKey from "~icons/ic/baseline-vpn-key";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
 const {axios} = useAxios();
 
+const {getApiUrl} = useApiRouter();
 const twoFactorUrl = getApiUrl('/frontend/account/two-factor');
 
-const {state: security, isLoading: securityLoading, execute: reloadSecurity} = useRefreshableAsyncState(
-    () => axios.get(twoFactorUrl.value).then((r) => {
-        return {
-            twoFactorEnabled: r.data.two_factor_enabled
-        };
-    }),
-    {
-        twoFactorEnabled: false,
+const {
+    data: security,
+    isLoading: securityLoading,
+    refetch
+} = useQuery<ApiAccountTwoFactorStatus>({
+    queryKey: [QueryKeys.AccountIndex, 'two-factor'],
+    queryFn: async ({signal}) => {
+        const {data} = await axios.get<ApiAccountTwoFactorStatus>(twoFactorUrl.value, {signal});
+        return data;
     },
-);
+    placeholderData: () => ({
+        two_factor_enabled: false,
+    }),
+});
+
+const reloadSecurity = () => {
+    void refetch();
+}
 
 const $changePasswordModal = useTemplateRef('$changePasswordModal');
 
@@ -175,7 +189,9 @@ const {$gettext} = useTranslate();
 
 const {doDelete: doDisableTwoFactor} = useConfirmAndDelete(
     $gettext('Disable two-factor authentication?'),
-    reloadSecurity
+    () => {
+        void reloadSecurity();
+    }
 );
 const disableTwoFactor = () => doDisableTwoFactor(twoFactorUrl.value);
 
@@ -196,12 +212,18 @@ const passkeyFields: DataTableField[] = [
     }
 ];
 
-const $dataTable = useTemplateRef('$dataTable');
-const {relist: reloadPasskeys} = useHasDatatable($dataTable);
+const passkeysItemProvider = useApiItemProvider(
+    passkeysApiUrl,
+    [QueryKeys.AccountPasskeys]
+);
+
+const reloadPasskeys = () => {
+    void passkeysItemProvider.refresh();
+};
 
 const {doDelete: deletePasskey} = useConfirmAndDelete(
     $gettext('Delete Passkey?'),
-    reloadPasskeys
+    () => reloadPasskeys()
 );
 
 const $passkeyModal = useTemplateRef('$passkeyModal');

@@ -7,7 +7,7 @@ apt-get install -y --no-install-recommends \
     ffmpeg bubblewrap \
     libao4 libfaad2 libfdk-aac2 libgd3 liblo7 libmad0 libmagic1 libportaudio2 \
     libsdl2-image-2.0-0 libsdl2-ttf-2.0-0 libsoundtouch1 libxpm4 libpulse0 \
-    libsamplerate0 libtag1v5 libsrt1.5-openssl liblilv-0-0
+    libsamplerate0 libtag2 libsrt1.5-openssl liblilv-0-0
 
 # Audio Post-processing
 apt-get install -y --no-install-recommends ladspa-sdk
@@ -18,9 +18,8 @@ if [[ "$(uname -m)" = "aarch64" ]]; then
     ARCHITECTURE=arm64
 fi
 
-# Temporarily use 2.3.0 until upstream RRs are fixed
-# wget -O /tmp/liquidsoap.deb "https://github.com/savonet/liquidsoap-release-assets/releases/download/rolling-release-v2.3.x/liquidsoap-c0cd13a_2.3.1-debian-bookworm-1_${ARCHITECTURE}.deb"
-wget -O /tmp/liquidsoap.deb "https://github.com/savonet/liquidsoap/releases/download/v2.3.0/liquidsoap_2.3.0-debian-bookworm-1_${ARCHITECTURE}.deb"
+# wget -O /tmp/liquidsoap.deb "https://github.com/savonet/liquidsoap/releases/download/v2.4.0/liquidsoap_2.4.0-debian-trixie-ocaml4.14.2-3_${ARCHITECTURE}.deb"
+wget -O /tmp/liquidsoap.deb "https://github.com/savonet/liquidsoap-release-assets/releases/download/rolling-release-v2.4.x/liquidsoap-d14abb4_2.4.1-debian-trixie-ocaml4.14.2-1_${ARCHITECTURE}.deb"
 
 dpkg -i /tmp/liquidsoap.deb
 apt-get install -y -f --no-install-recommends

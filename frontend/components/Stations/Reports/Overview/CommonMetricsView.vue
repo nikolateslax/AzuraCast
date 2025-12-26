@@ -12,6 +12,7 @@
 
                     <pie-chart
                         style="width: 100%;"
+                        v-if="stats"
                         :data="stats.top_listeners.datasets"
                         :labels="stats.top_listeners.labels"
                         :alt="stats.top_listeners.alt"
@@ -26,6 +27,7 @@
 
                     <pie-chart
                         style="width: 100%;"
+                        v-if="stats"
                         :data="stats.top_connected_time.datasets"
                         :labels="stats.top_connected_time.labels"
                         :alt="stats.top_connected_time.alt"
@@ -38,10 +40,8 @@
             :id="fieldKey+'_table'"
             ref="$dataTable"
             paginated
-            handle-client-side
             :fields="fields"
-            :items="stats.all"
-            @refresh-clicked="reloadData()"
+            :provider="metricsItemProvider"
         >
             <template #cell(connected_seconds_calc)="row">
                 {{ formatTime(row.item.connected_seconds) }}
@@ -54,13 +54,16 @@
 import PieChart from "~/components/Common/Charts/PieChart.vue";
 import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
 import formatTime from "~/functions/formatTime";
-import {toRef, useTemplateRef, watch} from "vue";
+import {computed, toRef, useTemplateRef, watch} from "vue";
 import {useTranslate} from "~/vendor/gettext";
-import {useAsyncState, useMounted} from "@vueuse/core";
+import {useMounted} from "@vueuse/core";
 import {useAxios} from "~/vendor/axios";
 import Loading from "~/components/Common/Loading.vue";
 import {useLuxon} from "~/vendor/luxon";
 import useHasDatatable from "~/functions/useHasDatatable";
+import {useQuery} from "@tanstack/vue-query";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import {useClientItemProvider} from "~/functions/dataTable/useClientItemProvider.ts";
 
 export interface DateRange {
     startDate: Date,
@@ -87,14 +90,37 @@ const dateRange = toRef(props, 'dateRange');
 const {axios} = useAxios();
 const {DateTime} = useLuxon();
 
-const {state: stats, isLoading, execute: reloadData} = useAsyncState(
-    () => axios.get(props.apiUrl, {
-        params: {
-            start: DateTime.fromJSDate(dateRange.value.startDate).toISO(),
-            end: DateTime.fromJSDate(dateRange.value.endDate).toISO()
-        }
-    }).then(r => r.data),
-    {
+type ChartData = {
+    all: any[],
+    top_listeners: {
+        labels: any[],
+        datasets: any[],
+        alt: any[]
+    },
+    top_connected_time: {
+        labels: any[],
+        datasets: any[],
+        alt: any[]
+    },
+}
+
+const metricsQuery = useQuery<ChartData>({
+    queryKey: queryKeyWithStation([
+        QueryKeys.StationReports,
+        'common_metrics',
+        dateRange
+    ]),
+    queryFn: async ({signal}) => {
+        const {data} = await axios.get(props.apiUrl, {
+            signal,
+            params: {
+                start: DateTime.fromJSDate(dateRange.value.startDate).toISO(),
+                end: DateTime.fromJSDate(dateRange.value.endDate).toISO()
+            }
+        });
+        return data;
+    },
+    placeholderData: () => ({
         all: [],
         top_listeners: {
             labels: [],
@@ -106,6 +132,17 @@ const {state: stats, isLoading, execute: reloadData} = useAsyncState(
             datasets: [],
             alt: []
         },
+    })
+});
+
+const {data: stats, isLoading, refetch} = metricsQuery;
+
+const metricsItemProvider = useClientItemProvider(
+    computed(() => stats.value?.all ?? []),
+    isLoading,
+    undefined,
+    async (): Promise<void> => {
+        await refetch();
     }
 );
 
@@ -114,9 +151,8 @@ const {navigate} = useHasDatatable($dataTable);
 
 const isMounted = useMounted();
 
-watch(dateRange, async () => {
+watch(dateRange, () => {
     if (isMounted.value) {
-        await reloadData();
         navigate();
     }
 });

@@ -48,30 +48,35 @@
 
 <script setup lang="ts">
 import RunningBadge from "~/components/Common/Badges/RunningBadge.vue";
-import {getApiUrl} from "~/router.ts";
 import {useAxios} from "~/vendor/axios.ts";
-import {useNotify} from "~/functions/useNotify";
+import {useNotify} from "~/components/Common/Toasts/useNotify.ts";
 import Loading from "~/components/Common/Loading.vue";
-import useAutoRefreshingAsyncState from "~/functions/useAutoRefreshingAsyncState.ts";
+import {ApiAdminServiceData} from "~/entities/ApiInterfaces.ts";
+import {useQuery} from "@tanstack/vue-query";
+import {QueryKeys} from "~/entities/Queries.ts";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
+const {getApiUrl} = useApiRouter();
 const servicesUrl = getApiUrl('/admin/services');
 
 const {axios, axiosSilent} = useAxios();
 
-const {state: services, isLoading} = useAutoRefreshingAsyncState(
-    () => axiosSilent.get(servicesUrl.value).then(r => r.data),
-    [],
-    {
-        timeout: 5000,
-        shallow: true
-    }
-);
+type ServiceDataRow = Required<ApiAdminServiceData>;
+
+const {data: services, isLoading} = useQuery<ServiceDataRow[]>({
+    queryKey: [QueryKeys.AdminIndex, 'services'],
+    queryFn: async ({signal}) => {
+        const {data} = await axiosSilent.get(servicesUrl.value, {signal});
+        return data;
+    },
+    placeholderData: () => ([]),
+    refetchInterval: 5 * 1000
+});
 
 const {notifySuccess} = useNotify();
 
-const doRestart = (serviceUrl: string) => {
-    void axios.post(serviceUrl).then((resp) => {
-        notifySuccess(resp.data.message);
-    });
+const doRestart = async (serviceUrl: string) => {
+    const {data} = await axios.post(serviceUrl);
+    notifySuccess(data.message);
 };
 </script>

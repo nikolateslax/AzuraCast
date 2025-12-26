@@ -6,6 +6,16 @@
     >
         <template #header="{id}">
             <div class="d-flex align-items-center">
+                <div v-if="profileData.station.listen_url" class="flex-shrink-0 me-2">
+                    <play-button
+                        class="btn-xl btn-link text-white"
+                        :stream="{
+                            url: profileData.station.listen_url,
+                            title: stationData.name,
+                            isStream: true
+                        }"
+                    />
+                </div>
                 <h3
                     :id="id"
                     class="flex-shrink card-title my-0"
@@ -16,27 +26,24 @@
                     class="card-subtitle text-end flex-fill my-0"
                     style="line-height: 1;"
                 >
-                    <icon
-                        class="align-middle"
-                        :icon="IconHeadphones"
-                    />
+                    <icon-ic-headphones class="align-middle"/>
                     <span class="ps-1">
                         {{ langListeners }}
                     </span>
 
                     <br>
                     <small>
-                        <span class="pe-1">{{ np.listeners.unique }}</span>
+                        <span class="pe-1">{{ np.listeners?.unique ?? 0 }}</span>
                         {{ $gettext('Unique') }}
                     </small>
                 </h6>
                 <router-link
-                    v-if="userAllowedForStation(StationPermission.Reports)"
+                    v-if="userAllowedForStation(StationPermissions.Reports)"
                     class="flex-shrink btn btn-link text-white ms-2 px-1 py-2"
                     :to="{name: 'stations:reports:listeners'}"
                     :title="$gettext('Listener Report')"
                 >
-                    <icon :icon="IconLogs" />
+                    <icon-ic-assignment/>
                 </router-link>
             </div>
         </template>
@@ -48,7 +55,7 @@
                         <div class="d-table">
                             <div class="d-table-row">
                                 <div class="d-table-cell align-middle text-end pe-2 pb-2">
-                                    <icon :icon="IconMusicNote"/>
+                                    <icon-ic-music-note/>
                                 </div>
                                 <div class="d-table-cell align-middle w-100 pb-2">
                                     <h5 class="m-0">
@@ -59,7 +66,7 @@
                             <div class="d-table-row">
                                 <div class="d-table-cell align-top text-end pe-2">
                                     <a
-                                        v-if="np.now_playing.song.art"
+                                        v-if="np.now_playing?.song?.art"
                                         v-lightbox
                                         :href="np.now_playing.song.art"
                                         target="_blank"
@@ -75,10 +82,10 @@
                                 <div class="d-table-cell align-middle w-100">
                                     <div v-if="!np.is_online">
                                         <h5 class="media-heading m-0 text-muted">
-                                            {{ offlineText ?? $gettext('Station Offline') }}
+                                            {{ stationData.offlineText ?? $gettext('Station Offline') }}
                                         </h5>
                                     </div>
-                                    <div v-else-if="np.now_playing.song.title !== ''">
+                                    <div v-else-if="np.now_playing?.song?.title">
                                         <h6
                                             class="media-heading m-0"
                                             style="line-height: 1.2;"
@@ -92,10 +99,10 @@
                                             class="media-heading m-0"
                                             style="line-height: 1.2;"
                                         >
-                                            {{ np.now_playing.song.text }}
+                                            {{ np.now_playing?.song?.text ?? '' }}
                                         </h6>
                                     </div>
-                                    <div v-if="np.now_playing.playlist">
+                                    <div v-if="np.now_playing?.playlist">
                                         <small class="text-muted">
                                             {{ $gettext('Playlist') }}
                                             : {{ np.now_playing.playlist }}</small>
@@ -113,15 +120,15 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6 mt-3 mt-md-0">
                     <div
-                        v-if="!np.live.is_live && np.playing_next"
+                        v-if="!np.live?.is_live && np.playing_next"
                         class="clearfix"
                     >
                         <div class="d-table">
                             <div class="d-table-row">
                                 <div class="d-table-cell align-middle pe-2 text-end pb-2">
-                                    <icon :icon="IconSkipNext"/>
+                                    <icon-ic-skip-next/>
                                 </div>
                                 <div class="d-table-cell align-middle w-100 pb-2">
                                     <h5 class="m-0">
@@ -132,7 +139,7 @@
                             <div class="d-table-row">
                                 <div class="d-table-cell align-top text-end pe-2">
                                     <a
-                                        v-if="np.playing_next.song.art"
+                                        v-if="np.playing_next?.song?.art"
                                         v-lightbox
                                         :href="np.playing_next.song.art"
                                         target="_blank"
@@ -146,7 +153,7 @@
                                     </a>
                                 </div>
                                 <div class="d-table-cell align-middle w-100">
-                                    <div v-if="np.playing_next.song.title !== ''">
+                                    <div v-if="np.playing_next?.song?.title">
                                         <h6
                                             class="media-heading m-0"
                                             style="line-height: 1;"
@@ -160,7 +167,7 @@
                                             class="media-heading m-0"
                                             style="line-height: 1;"
                                         >
-                                            {{ np.playing_next.song.text }}
+                                            {{ np.playing_next?.song?.text ?? "" }}
                                         </h6>
                                     </div>
 
@@ -174,11 +181,12 @@
                         </div>
                     </div>
                     <div
-                        v-else-if="np.live.is_live"
+                        v-else-if="np.live?.is_live"
                         class="clearfix"
                     >
                         <h6 style="margin-left: 22px;">
-                            <icon :icon="IconMic"/>
+                            <icon-ic-mic/>
+
                             {{ $gettext('Live') }}
                         </h6>
 
@@ -186,7 +194,7 @@
                             class="media-heading"
                             style="margin-left: 22px;"
                         >
-                            {{ np.live.streamer_name }}
+                            {{ np.live?.streamer_name }}
                         </h4>
                     </div>
                 </div>
@@ -194,29 +202,31 @@
         </div>
 
         <template
-            v-if="isLiquidsoap && userAllowedForStation(StationPermission.Broadcasting)"
+            v-if="isLiquidsoap && userAllowedForStation(StationPermissions.Broadcasting)"
             #footer_actions
         >
             <button
-                v-if="!np.live.is_live"
+                v-if="!np.live?.is_live"
                 id="btn_skip_song"
                 type="button"
                 class="btn btn-link text-primary"
                 @click="doSkipSong()"
             >
-                <icon :icon="IconSkipNext" />
+                <icon-ic-skip-next/>
+
                 <span>
                     {{ $gettext('Skip Song') }}
                 </span>
             </button>
             <button
-                v-if="np.live.is_live"
+                v-if="np.live?.is_live"
                 id="btn_disconnect_streamer"
                 type="button"
                 class="btn btn-link text-primary"
                 @click="doDisconnectStreamer()"
             >
-                <icon :icon="IconVolumeOff" />
+                <icon-ic-volume-off/>
+
                 <span>
                     {{ $gettext('Disconnect Streamer') }}
                 </span>
@@ -227,7 +237,8 @@
                 class="btn btn-link text-secondary"
                 @click="updateMetadata()"
             >
-                <icon :icon="IconUpdate" />
+                <icon-ic-update/>
+
                 <span>
                     {{ $gettext('Update Metadata') }}
                 </span>
@@ -235,53 +246,50 @@
         </template>
     </card-page>
 
-    <template v-if="isLiquidsoap && userAllowedForStation(StationPermission.Broadcasting)">
+    <template v-if="isLiquidsoap && userAllowedForStation(StationPermissions.Broadcasting)">
         <update-metadata-modal ref="$updateMetadataModal" />
     </template>
 </template>
 
 <script setup lang="ts">
-import {BackendAdapter} from '~/entities/RadioAdapters';
-import Icon from '~/components/Common/Icon.vue';
 import {computed, useTemplateRef} from "vue";
 import {useTranslate} from "~/vendor/gettext";
 import useNowPlaying from "~/functions/useNowPlaying";
 import CardPage from "~/components/Common/CardPage.vue";
 import {useLightbox} from "~/vendor/lightbox";
-import {StationPermission, userAllowedForStation} from "~/acl";
-import {useAzuraCastStation} from "~/vendor/azuracast";
-import {
-    IconHeadphones,
-    IconLogs,
-    IconMic,
-    IconMusicNote,
-    IconSkipNext,
-    IconUpdate,
-    IconVolumeOff
-} from "~/components/Common/icons";
+import {useUserAllowedForStation} from "~/functions/useUserallowedForStation.ts";
 import UpdateMetadataModal from "~/components/Stations/Profile/UpdateMetadataModal.vue";
 import useMakeApiCall from "~/components/Stations/Profile/useMakeApiCall.ts";
-import {NowPlayingProps} from "~/functions/useNowPlaying.ts";
+import {BackendAdapters, StationPermissions} from "~/entities/ApiInterfaces.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {useStationProfileData} from "~/components/Stations/Profile/useProfileQuery.ts";
+import {toRefs} from "@vueuse/core";
+import IconIcHeadphones from "~icons/ic/baseline-headphones";
+import IconIcAssignment from "~icons/ic/baseline-assignment";
+import IconIcMic from "~icons/ic/baseline-mic";
+import IconIcMusicNote from "~icons/ic/baseline-music-note";
+import IconIcSkipNext from "~icons/ic/baseline-skip-next";
+import IconIcUpdate from "~icons/ic/baseline-update";
+import IconIcVolumeOff from "~icons/ic/baseline-volume-off";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
+import PlayButton from "~/components/Common/Audio/PlayButton.vue";
 
-export interface ProfileNowPlayingPanelProps extends NowPlayingProps {
-    backendType: BackendAdapter,
-    backendSkipSongUri: string,
-    backendDisconnectStreamerUri: string
-}
+const stationData = useStationData();
+const profileData = useStationProfileData();
+const {nowPlayingProps} = toRefs(profileData);
 
-defineOptions({
-    inheritAttrs: false
-});
+const {userAllowedForStation} = useUserAllowedForStation();
 
-const props = defineProps<ProfileNowPlayingPanelProps>();
+const {getStationApiUrl} = useApiRouter();
 
-const {offlineText} = useAzuraCastStation();
+const backendSkipSongUri = getStationApiUrl('/backend/skip');
+const backendDisconnectStreamerUri = getStationApiUrl('/backend/disconnect');
 
 const {
     np,
     currentTrackDurationDisplay,
     currentTrackElapsedDisplay
-} = useNowPlaying(props);
+} = useNowPlaying(nowPlayingProps);
 
 const {$gettext, $ngettext} = useTranslate();
 
@@ -297,13 +305,13 @@ const langListeners = computed(() => {
 });
 
 const isLiquidsoap = computed(() => {
-    return props.backendType === BackendAdapter.Liquidsoap;
+    return stationData.value.backendType === BackendAdapters.Liquidsoap;
 });
 
 const {vLightbox} = useLightbox();
 
 const doSkipSong = useMakeApiCall(
-    props.backendSkipSongUri,
+    backendSkipSongUri,
     {
         title: $gettext('Skip current song?'),
         confirmButtonText: $gettext('Skip Song')
@@ -311,7 +319,7 @@ const doSkipSong = useMakeApiCall(
 );
 
 const doDisconnectStreamer = useMakeApiCall(
-    props.backendDisconnectStreamerUri,
+    backendDisconnectStreamerUri,
     {
         title: $gettext('Disconnect current streamer?'),
         confirmButtonText: $gettext('Disconnect Streamer')

@@ -2,11 +2,11 @@
     <div class="outside-card-header d-flex align-items-center">
         <div class="flex-fill">
             <h2 class="display-6 m-0">
-                {{ name }}
+                {{ stationData.name }}
             </h2>
         </div>
         <div
-            v-if="userAllowedForStation(StationPermission.Profile)"
+            v-if="userAllowedForStation(StationPermissions.Profile)"
             class="flex-shrink-0 ms-3"
         >
             <router-link
@@ -14,7 +14,8 @@
                 role="button"
                 :to="{name: 'stations:profile:edit'}"
             >
-                <icon :icon="IconEdit" />
+                <icon-ic-edit/>
+
                 <span>
                     {{ $gettext('Edit Profile') }}
                 </span>
@@ -34,11 +35,13 @@
     </card-page>
 </template>
 <script setup lang="ts">
-import {StationPermission, userAllowedForStation} from "~/acl.ts";
-import {IconEdit} from "~/components/Common/icons.ts";
-import Icon from "~/components/Common/Icon.vue";
+import {useUserAllowedForStation} from "~/functions/useUserallowedForStation.ts";
 import CardPage from "~/components/Common/CardPage.vue";
-import {useAzuraCastStation} from "~/vendor/azuracast.ts";
+import {StationPermissions} from "~/entities/ApiInterfaces.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import IconIcEdit from "~icons/ic/baseline-edit";
 
-const {name} = useAzuraCastStation();
+const stationData = useStationData();
+
+const {userAllowedForStation} = useUserAllowedForStation();
 </script>

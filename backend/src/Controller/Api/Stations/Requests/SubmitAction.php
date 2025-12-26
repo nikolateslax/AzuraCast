@@ -20,7 +20,9 @@ use App\Http\ServerRequest;
 use App\OpenApi;
 use App\Radio\Frontend\Blocklist\BlocklistParser;
 use App\Service\DeviceDetector;
+use App\Utilities\Time;
 use App\Utilities\Types;
+use Carbon\CarbonImmutable;
 use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 
@@ -28,8 +30,9 @@ use Psr\Http\Message\ResponseInterface;
     OA\Post(
         path: '/station/{station_id}/request/{request_id}',
         operationId: 'submitSongRequest',
-        description: 'Submit a song request.',
-        tags: ['Stations: Song Requests'],
+        summary: 'Submit a song request.',
+        security: [],
+        tags: [OpenApi::TAG_PUBLIC_STATIONS],
         parameters: [
             new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
             new OA\Parameter(
@@ -41,10 +44,10 @@ use Psr\Http\Message\ResponseInterface;
             ),
         ],
         responses: [
-            new OA\Response(ref: OpenApi::REF_RESPONSE_SUCCESS, response: 200),
-            new OA\Response(ref: OpenApi::REF_RESPONSE_ACCESS_DENIED, response: 403),
-            new OA\Response(ref: OpenApi::REF_RESPONSE_NOT_FOUND, response: 404),
-            new OA\Response(ref: OpenApi::REF_RESPONSE_GENERIC_ERROR, response: 500),
+            new OpenApi\Response\Success(),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\NotFound(),
+            new OpenApi\Response\GenericError(),
         ]
     )
 ]
@@ -129,7 +132,7 @@ final class SubmitAction implements SingleActionInterface
 
         if (!$isAuthenticated) {
             // Check for any request (on any station) within the last $threshold_seconds.
-            $thresholdMins = $station->getRequestDelay() ?? 5;
+            $thresholdMins = $station->request_delay ?? 5;
             $thresholdSeconds = $thresholdMins * 60;
 
             // Always have a minimum threshold to avoid flooding.
@@ -137,20 +140,36 @@ final class SubmitAction implements SingleActionInterface
                 $thresholdSeconds = 15;
             }
 
-            $recentRequests = (int)$this->em->createQuery(
+            $now = Time::nowUtc();
+
+            /** @var StationRequest|null $latestRequest */
+            $latestRequest = $this->em->createQuery(
                 <<<'DQL'
-                    SELECT COUNT(sr.id) FROM App\Entity\StationRequest sr
+                    SELECT sr FROM App\Entity\StationRequest sr
                     WHERE sr.ip = :user_ip
                     AND sr.timestamp >= :threshold
+                    ORDER BY sr.timestamp DESC
                 DQL
             )->setParameter('user_ip', $ip)
-                ->setParameter('threshold', time() - $thresholdSeconds)
-                ->getSingleScalarResult();
+                ->setParameter('threshold', $now->subSeconds($thresholdSeconds))
+                ->setMaxResults(1)
+                ->getOneOrNullResult();
 
-            if ($recentRequests > 0) {
+            if ($latestRequest !== null) {
+                $requestsAvailableTime = CarbonImmutable::instance($latestRequest->timestamp)
+                    ->addSeconds($thresholdSeconds);
+
+                $requestsAvailableIn = $now->diffInUTCMinutes($requestsAvailableTime, true);
+
                 throw CannotCompleteActionException::submitRequest(
                     $request,
-                    __('You have submitted a request too recently! Please wait before submitting another one.')
+                    sprintf(
+                        __(
+                            'You have submitted a request too recently! '
+                            . 'Please wait %d minutes before submitting another one.'
+                        ),
+                        round($requestsAvailableIn, 2)
+                    ),
                 );
             }
         }

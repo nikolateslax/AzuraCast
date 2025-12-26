@@ -9,6 +9,7 @@ use App\Entity\StationStreamer;
 use App\Entity\StationStreamerBroadcast;
 use App\Flysystem\StationFilesystems;
 use App\Media\AlbumArt;
+use App\Utilities\Time;
 
 /**
  * @extends AbstractStationBasedRepository<StationStreamer>
@@ -32,8 +33,8 @@ final class StationStreamerRepository extends AbstractStationBasedRepository
             return false;
         }
 
-        $station->setIsStreamerLive(true);
-        $station->setCurrentStreamer($streamer);
+        $station->is_streamer_live = true;
+        $station->current_streamer = $streamer;
         $this->em->persist($station);
 
         $record = new StationStreamerBroadcast($streamer);
@@ -46,12 +47,13 @@ final class StationStreamerRepository extends AbstractStationBasedRepository
     public function onDisconnect(Station $station): bool
     {
         foreach ($this->broadcastRepo->getActiveBroadcasts($station) as $broadcast) {
-            $broadcast->setTimestampEnd(time());
+            $broadcast->timestampEnd = Time::nowUtc();
             $this->em->persist($broadcast);
         }
 
-        $station->setIsStreamerLive(false);
-        $station->setCurrentStreamer(null);
+        $station->is_streamer_live = false;
+        $station->current_streamer = null;
+
         $this->em->persist($station);
         $this->em->flush();
 
@@ -82,25 +84,25 @@ final class StationStreamerRepository extends AbstractStationBasedRepository
         StationStreamer $streamer,
         string $rawArtworkString
     ): void {
-        $artworkPath = StationStreamer::getArtworkPath($streamer->getIdRequired());
+        $artworkPath = StationStreamer::getArtworkPath($streamer->id);
         $artworkString = AlbumArt::resize($rawArtworkString);
 
-        $fsConfig = StationFilesystems::buildConfigFilesystem($streamer->getStation());
+        $fsConfig = StationFilesystems::buildConfigFilesystem($streamer->station);
         $fsConfig->write($artworkPath, $artworkString);
 
-        $streamer->setArtUpdatedAt(time());
+        $streamer->art_updated_at = time();
         $this->em->persist($streamer);
     }
 
     public function removeArtwork(
         StationStreamer $streamer
     ): void {
-        $artworkPath = StationStreamer::getArtworkPath($streamer->getIdRequired());
+        $artworkPath = StationStreamer::getArtworkPath($streamer->id);
 
-        $fsConfig = StationFilesystems::buildConfigFilesystem($streamer->getStation());
+        $fsConfig = StationFilesystems::buildConfigFilesystem($streamer->station);
         $fsConfig->delete($artworkPath);
 
-        $streamer->setArtUpdatedAt(0);
+        $streamer->art_updated_at = 0;
         $this->em->persist($streamer);
     }
 

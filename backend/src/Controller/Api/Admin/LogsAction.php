@@ -5,22 +5,73 @@ declare(strict_types=1);
 namespace App\Controller\Api\Admin;
 
 use App\Container\EnvironmentAwareTrait;
-use App\Controller\Api\Traits\HasLogViewer;
+use App\Controller\Api\Stations\LogsAction as StationLogsAction;
+use App\Entity\Api\Admin\LogList;
+use App\Entity\Api\Admin\StationLogList;
+use App\Entity\Api\LogContents;
 use App\Entity\Api\LogType;
+use App\Entity\Repository\StationRepository;
+use App\Enums\StationPermissions;
 use App\Exception;
 use App\Http\Response;
 use App\Http\ServerRequest;
+use App\OpenApi;
+use App\Radio\Adapters;
 use App\Service\ServiceControl;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 
-final class LogsAction
+#[
+    OA\Get(
+        path: '/admin/logs',
+        operationId: 'adminListLogs',
+        summary: 'List all available log types for viewing.',
+        tags: [OpenApi::TAG_ADMIN],
+        responses: [
+            new OpenApi\Response\Success(
+                content: new OA\JsonContent(
+                    ref: LogList::class
+                )
+            ),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\GenericError(),
+        ]
+    ),
+    OA\Get(
+        path: '/admin/log/{key}',
+        operationId: 'adminViewLog',
+        summary: 'View a specific log contents.',
+        tags: [OpenApi::TAG_ADMIN],
+        parameters: [
+            new OA\Parameter(
+                name: 'key',
+                description: 'Log Key from listing return.',
+                in: 'path',
+                required: true,
+                schema: new OA\Schema(type: 'string')
+            ),
+        ],
+        responses: [
+            new OpenApi\Response\Success(
+                content: new OA\JsonContent(
+                    ref: LogContents::class
+                )
+            ),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\GenericError(),
+        ]
+    ),
+]
+final class LogsAction extends StationLogsAction
 {
-    use HasLogViewer;
     use EnvironmentAwareTrait;
 
     public function __construct(
         private readonly ServiceControl $serviceControl,
+        private readonly StationRepository $stationRepo,
+        Adapters $adapters,
     ) {
+        parent::__construct($adapters);
     }
 
     public function __invoke(
@@ -35,23 +86,57 @@ final class LogsAction
 
         if (null === $log) {
             $router = $request->getRouter();
+
+            $globalLogs = array_map(
+                function (LogType $row) use ($router): LogType {
+                    $row->links = [
+                        'self' => $router->named(
+                            'api:admin:log',
+                            [
+                                'log' => $row->key,
+                            ]
+                        ),
+                    ];
+                    return $row;
+                },
+                $logTypes
+            );
+
+            $acl = $request->getAcl();
+            $stationLogs = [];
+            foreach ($this->stationRepo->iterateEnabledStations() as $station) {
+                if (!$acl->isAllowed(StationPermissions::Logs, $station)) {
+                    continue;
+                }
+
+                $stationLogList = array_map(
+                    function (LogType $row) use ($router, $station): LogType {
+                        $row->links = [
+                            'self' => $router->named(
+                                'api:stations:log',
+                                [
+                                    'station_id' => $station->id,
+                                    'log' => $row->key,
+                                ]
+                            ),
+                        ];
+                        return $row;
+                    },
+                    $this->getStationLogs($station)
+                );
+
+                $stationLogs[] = new StationLogList(
+                    id: $station->id,
+                    name: $station->name,
+                    logs: $stationLogList
+                );
+            }
+
             return $response->withJson(
-                [
-                    'logs' => array_map(
-                        function (LogType $row) use ($router): LogType {
-                            $row->links = [
-                                'self' => $router->named(
-                                    'api:admin:log',
-                                    [
-                                        'log' => $row->key,
-                                    ]
-                                ),
-                            ];
-                            return $row;
-                        },
-                        $logTypes
-                    ),
-                ]
+                new LogList(
+                    globalLogs: $globalLogs,
+                    stationLogs: $stationLogs
+                )
             );
         }
 

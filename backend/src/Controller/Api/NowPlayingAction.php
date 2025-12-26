@@ -12,6 +12,7 @@ use App\Exception\Http\InvalidRequestAttribute;
 use App\Http\Response;
 use App\Http\ServerRequest;
 use App\OpenApi;
+use Exception;
 use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 
@@ -20,15 +21,14 @@ use Psr\Http\Message\ResponseInterface;
         path: '/nowplaying',
         operationId: 'getAllNowPlaying',
         description: "Returns a full summary of all stations' current state.",
-        tags: ['Now Playing'],
+        security: [],
+        tags: [OpenApi::TAG_PUBLIC_NOW_PLAYING],
         parameters: [],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Success',
+            new OpenApi\Response\Success(
                 content: new OA\JsonContent(
                     type: 'array',
-                    items: new OA\Items(ref: '#/components/schemas/Api_NowPlaying')
+                    items: new OA\Items(ref: NowPlaying::class)
                 )
             ),
         ]
@@ -37,24 +37,23 @@ use Psr\Http\Message\ResponseInterface;
         path: '/nowplaying/{station_id}',
         operationId: 'getStationNowPlaying',
         description: "Returns a full summary of the specified station's current state.",
-        tags: ['Now Playing'],
+        security: [],
+        tags: [OpenApi::TAG_PUBLIC_NOW_PLAYING],
         parameters: [
             new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
         ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Success',
-                content: new OA\JsonContent(ref: '#/components/schemas/Api_NowPlaying')
+            new OpenApi\Response\Success(
+                content: new OA\JsonContent(ref: NowPlaying::class)
             ),
-            new OA\Response(ref: OpenApi::REF_RESPONSE_NOT_FOUND, response: 404),
+            new OpenApi\Response\NotFound(),
         ]
     )
 ]
-final class NowPlayingAction implements SingleActionInterface
+final readonly class NowPlayingAction implements SingleActionInterface
 {
     public function __construct(
-        private readonly NowPlayingCache $nowPlayingCache
+        private NowPlayingCache $nowPlayingCache
     ) {
     }
 
@@ -69,13 +68,19 @@ final class NowPlayingAction implements SingleActionInterface
             $station = null;
         }
 
-        $router = $request->getRouter();
-
         if (null !== $station) {
             $np = $this->nowPlayingCache->getForStation($station);
 
-            if ($np instanceof NowPlaying) {
-                $np->resolveUrls($router->getBaseUrl());
+            $accessAllowed = true;
+            if (!$station->enable_public_page) {
+                try {
+                    $request->getUser();
+                } catch (Exception) {
+                    $accessAllowed = false;
+                }
+            }
+
+            if ($np instanceof NowPlaying && $accessAllowed) {
                 $np->update();
 
                 return $response->withJson($np);
@@ -85,12 +90,9 @@ final class NowPlayingAction implements SingleActionInterface
                 ->withJson(Error::notFound());
         }
 
-        $baseUrl = $router->getBaseUrl();
-
         $np = $this->nowPlayingCache->getForAllStations(true);
         $np = array_map(
-            function (NowPlaying $npRow) use ($baseUrl) {
-                $npRow->resolveUrls($baseUrl);
+            function (NowPlaying $npRow) {
                 $npRow->update();
                 return $npRow;
             },

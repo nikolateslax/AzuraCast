@@ -8,6 +8,7 @@
             :aria-label="title"
             :class="'modal-'+size"
             aria-hidden="true"
+            v-on="eventListeners"
         >
             <div class="modal-dialog">
                 <div
@@ -53,10 +54,9 @@
 </template>
 
 <script setup lang="ts">
-import Modal from 'bootstrap/js/src/modal';
-import {onMounted, onUnmounted, ref, useSlots, useTemplateRef, watch} from 'vue';
+import {Modal} from "bootstrap";
+import {onMounted, onUnmounted, ref, useSlots, useTemplateRef, watch} from "vue";
 import Loading from "~/components/Common/Loading.vue";
-import {useEventListener} from "@vueuse/core";
 
 const slots = useSlots();
 
@@ -74,59 +74,44 @@ const props = withDefaults(
     }
 );
 
-const emit = defineEmits([
-    'shown',
-    'hidden',
-    'update:active'
-]);
+const emit = defineEmits<{
+    (e: 'shown'): void,
+    (e: 'hidden'): void,
+    (e: 'update:active', active: boolean): void
+}>();
 
-const isActive = ref(props.active);
+const isActive = ref<boolean>(props.active);
 watch(isActive, (newActive) => {
     emit('update:active', newActive);
 });
 
-let bsModal = null;
+let bsModal: Modal | null = null;
 const $modal = useTemplateRef('$modal');
 
 onMounted(() => {
-    bsModal = new Modal($modal.value);
+    if ($modal.value) {
+        bsModal = new Modal($modal.value);
+    }
 });
 
 onUnmounted(() => {
     bsModal?.dispose();
 });
 
-useEventListener(
-    $modal,
-    'hide.bs.modal',
-    () => {
+const eventListeners = {
+    ['hide.bs.modal']: () => {
         isActive.value = false;
-    }
-);
-
-useEventListener(
-    $modal,
-    'show.bs.modal',
-    () => {
-        isActive.value = true;
-    }
-);
-
-useEventListener(
-    $modal,
-    'hidden.bs.modal',
-    () => {
+    },
+    ['hidden.bs.modal']: () => {
         emit('hidden');
-    }
-);
-
-useEventListener(
-    $modal,
-    'shown.bs.modal',
-    () => {
+    },
+    ['show.bs.modal']: () => {
+        isActive.value = true;
+    },
+    ['shown.bs.modal']: () => {
         emit('shown');
-    }
-);
+    },
+};
 
 const show = () => {
     bsModal?.show();

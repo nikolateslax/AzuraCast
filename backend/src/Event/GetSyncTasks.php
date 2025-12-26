@@ -5,24 +5,20 @@ declare(strict_types=1);
 namespace App\Event;
 
 use App\Sync\Task\AbstractTask;
-use Generator;
 
-/**
- * @phpstan-type TaskClass class-string<AbstractTask>
- */
 final class GetSyncTasks
 {
-    /** @var TaskClass[] */
+    /** @var class-string<AbstractTask>[] */
     private array $tasks = [];
 
-    /** @return Generator<TaskClass> */
-    public function getTasks(): Generator
+    /** @return class-string<AbstractTask>[] */
+    public function getTasks(): array
     {
-        yield from $this->tasks;
+        return $this->tasks;
     }
 
     /**
-     * @param TaskClass $className
+     * @param class-string<AbstractTask> $className
      */
     public function addTask(string $className): void
     {

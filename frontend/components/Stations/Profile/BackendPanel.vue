@@ -4,43 +4,24 @@
         header-id="hdr_backend"
     >
         <template #header="{id}">
-            <h3
-                :id="id"
-                class="card-title"
-            >
-                {{ $gettext('AutoDJ Service') }}
-                <running-badge :running="backendRunning" />
-                <br>
-                <small>{{ backendName }}</small>
-            </h3>
+            <div class="d-flex align-items-center">
+                <h3
+                    :id="id"
+                    class="flex-fill card-title my-0"
+                >
+                    {{ $gettext('AutoDJ Service') }}
+
+                    <br>
+                    <small>{{ backendName }}</small>
+                </h3>
+                <div class="flex-shrink-0">
+                    <running-badge :running="profileData.services.backendRunning"/>
+                </div>
+            </div>
         </template>
 
-        <div class="card-body">
-            <p class="card-text">
-                {{ langTotalTracks }}
-            </p>
-
-            <div
-                v-if="userAllowedForStation(StationPermission.Media)"
-                class="buttons"
-            >
-                <router-link
-                    class="btn btn-primary"
-                    :to="{name: 'stations:files:index'}"
-                >
-                    {{ $gettext('Music Files') }}
-                </router-link>
-                <router-link
-                    class="btn btn-primary"
-                    :to="{name: 'stations:playlists:index'}"
-                >
-                    {{ $gettext('Playlists') }}
-                </router-link>
-            </div>
-        </div>
-
         <template
-            v-if="userAllowedForStation(StationPermission.Broadcasting) && hasStarted"
+            v-if="userAllowedForStation(StationPermissions.Broadcasting) && stationData.hasStarted"
             #footer_actions
         >
             <button
@@ -48,29 +29,30 @@
                 class="btn btn-link text-secondary"
                 @click="doRestart()"
             >
-                <icon :icon="IconUpdate" />
+                <icon-ic-update/>
+
                 <span>
                     {{ $gettext('Restart') }}
                 </span>
             </button>
             <button
-                v-if="!backendRunning"
+                v-if="!profileData.services.backendRunning"
                 type="button"
                 class="btn btn-link text-success"
                 @click="doStart()"
             >
-                <icon :icon="IconPlay" />
+                <icon-ic-play-arrow/>
                 <span>
                     {{ $gettext('Start') }}
                 </span>
             </button>
             <button
-                v-if="backendRunning"
+                v-if="profileData.services.backendRunning"
                 type="button"
                 class="btn btn-link text-danger"
                 @click="doStop()"
             >
-                <icon :icon="IconStop" />
+                <icon-ic-stop/>
                 <span>
                     {{ $gettext('Stop') }}
                 </span>
@@ -80,76 +62,42 @@
 </template>
 
 <script setup lang="ts">
-import Icon from '~/components/Common/Icon.vue';
 import RunningBadge from "~/components/Common/Badges/RunningBadge.vue";
 import {useTranslate} from "~/vendor/gettext";
 import {computed} from "vue";
 import CardPage from "~/components/Common/CardPage.vue";
-import {StationPermission, userAllowedForStation} from "~/acl";
-import {IconPlay, IconStop, IconUpdate} from "~/components/Common/icons";
+import {useUserAllowedForStation} from "~/functions/useUserallowedForStation.ts";
 import useMakeApiCall from "~/components/Stations/Profile/useMakeApiCall.ts";
+import {BackendAdapters, StationPermissions} from "~/entities/ApiInterfaces.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {useStationProfileData} from "~/components/Stations/Profile/useProfileQuery.ts";
+import IconIcPlayArrow from "~icons/ic/baseline-play-arrow";
+import IconIcStop from "~icons/ic/baseline-stop";
+import IconIcUpdate from "~icons/ic/baseline-update";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
-import {BackendAdapter} from '~/entities/RadioAdapters';
+const stationData = useStationData();
+const profileData = useStationProfileData();
 
-export interface ProfileBackendPanelParentProps {
-    numSongs: number,
-    numPlaylists: number,
-    backendType: BackendAdapter,
-    hasStarted: boolean,
-    backendRestartUri: string,
-    backendStartUri: string,
-    backendStopUri: string,
-}
+const {userAllowedForStation} = useUserAllowedForStation();
 
-defineOptions({
-    inheritAttrs: false
-});
+const {getStationApiUrl} = useApiRouter();
 
-interface ProfileBackendPanelProps extends ProfileBackendPanelParentProps {
-    backendRunning: boolean,
-}
-
-const props = defineProps<ProfileBackendPanelProps>();
-
-const {$gettext, $ngettext} = useTranslate();
-
-const langTotalTracks = computed(() => {
-    const numSongs = $ngettext(
-        '%{numSongs} uploaded song',
-        '%{numSongs} uploaded songs',
-        props.numSongs,
-        {
-            numSongs: String(props.numSongs)
-        }
-    );
-
-    const numPlaylists = $ngettext(
-        '%{numPlaylists} playlist',
-        '%{numPlaylists} playlists',
-        props.numPlaylists,
-        {
-            numPlaylists: String(props.numPlaylists)
-        }
-    );
-
-    return $gettext(
-        'LiquidSoap is currently shuffling from %{songs} and %{playlists}.',
-        {
-            songs: numSongs,
-            playlists: numPlaylists
-        }
-    );
-});
+const backendRestartUri = getStationApiUrl('/backend/restart');
+const backendStartUri = getStationApiUrl('/backend/start');
+const backendStopUri = getStationApiUrl('/backend/stop');
 
 const backendName = computed(() => {
-    if (props.backendType === BackendAdapter.Liquidsoap) {
+    if (stationData.value.backendType === BackendAdapters.Liquidsoap) {
         return 'Liquidsoap';
     }
     return '';
 });
 
+const {$gettext} = useTranslate();
+
 const doRestart = useMakeApiCall(
-    props.backendRestartUri,
+    backendRestartUri,
     {
         title: $gettext('Restart service?'),
         confirmButtonText: $gettext('Restart')
@@ -157,7 +105,7 @@ const doRestart = useMakeApiCall(
 );
 
 const doStart = useMakeApiCall(
-    props.backendStartUri,
+    backendStartUri,
     {
         title: $gettext('Start service?'),
         confirmButtonText: $gettext('Start'),
@@ -166,7 +114,7 @@ const doStart = useMakeApiCall(
 );
 
 const doStop = useMakeApiCall(
-    props.backendStopUri,
+    backendStopUri,
     {
         title: $gettext('Stop service?'),
         confirmButtonText: $gettext('Stop'),

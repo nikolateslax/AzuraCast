@@ -7,7 +7,7 @@
             <form-group-multi-check
                 id="edit_form_backend_options"
                 class="col-md-12"
-                :field="v$.backend_options"
+                :field="r$.backend_options"
                 :options="backendOptions"
                 stacked
                 :label="$gettext('Advanced Manual AutoDJ Scheduling Options')"
@@ -20,21 +20,15 @@
 <script setup lang="ts">
 import {useTranslate} from "~/vendor/gettext";
 import FormGroupMultiCheck from "~/components/Form/FormGroupMultiCheck.vue";
-import {useVuelidateOnFormTab} from "~/functions/useVuelidateOnFormTab";
 import Tab from "~/components/Common/Tab.vue";
-import {GenericForm} from "~/entities/Forms.ts";
+import {storeToRefs} from "pinia";
+import {useStationsPlaylistsForm} from "~/components/Stations/Playlists/Form/form.ts";
+import {useFormTabClass} from "~/functions/useFormTabClass.ts";
+import {computed} from "vue";
 
-const form = defineModel<GenericForm>('form');
+const {r$} = storeToRefs(useStationsPlaylistsForm());
 
-const {v$, tabClass} = useVuelidateOnFormTab(
-    form,
-    {
-        backend_options: {},
-    },
-    {
-        backend_options: []
-    }
-);
+const tabClass = useFormTabClass(computed(() => r$.value.$groups.advancedTab));
 
 const {$gettext} = useTranslate();
 
@@ -50,6 +44,10 @@ const backendOptions = [
     {
         value: 'merge',
         text: $gettext('Merge playlist to play as a single track.')
+    },
+    {
+        value: 'prioritize',
+        text: $gettext('Prioritize over listener requests.')
     }
 ];
 </script>

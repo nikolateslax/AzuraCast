@@ -2,7 +2,7 @@
     <canvas ref="$canvas">
         <slot>
             <chart-alt-values
-                v-if="alt.length > 0"
+                v-if="alt && alt.length > 0"
                 :alt="alt"
             />
         </slot>
@@ -22,10 +22,7 @@ useChart<'pie'>(
     props,
     $canvas,
     {
-        type: 'pie',
-        options: {
-            aspectRatio: props.aspectRatio,
-        }
+        type: 'pie'
     }
 );
 </script>

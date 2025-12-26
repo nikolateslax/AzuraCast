@@ -1,16 +1,11 @@
-import NowPlaying from '~/entities/NowPlaying';
-import {computed, onMounted, Ref, ref, ShallowRef, shallowRef, watch} from "vue";
-import {reactiveComputed, useEventSource, useIntervalFn} from "@vueuse/core";
-import {ApiNowPlaying} from "~/entities/ApiInterfaces.ts";
-import {getApiUrl} from "~/router.ts";
+import NowPlaying from "~/entities/NowPlaying";
+import {computed, EffectScope, effectScope, isRef, MaybeRef, ref, shallowRef, watch} from "vue";
+import {useDocumentVisibility, useEventSource, useIntervalFn} from "@vueuse/core";
+import {ApiNowPlaying, ApiNowPlayingVueProps} from "~/entities/ApiInterfaces.ts";
 import {useAxios} from "~/vendor/axios.ts";
 import formatTime from "~/functions/formatTime.ts";
-
-export interface NowPlayingProps {
-    stationShortName: string,
-    useStatic?: boolean,
-    useSse?: boolean
-}
+import {isUndefined, omitBy} from "es-toolkit/compat";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
 interface SsePayload {
     data: {
@@ -19,21 +14,23 @@ interface SsePayload {
     }
 }
 
-export default function useNowPlaying(initialProps: NowPlayingProps) {
-    const props = reactiveComputed(() => ({
-        useStatic: false,
-        useSse: false,
-        ...initialProps
-    }));
+export default function useNowPlaying(
+    props: MaybeRef<ApiNowPlayingVueProps>
+) {
+    const np = shallowRef<ApiNowPlaying>(NowPlaying);
+    const npTimestamp = ref<number>(0);
 
-    const np: ShallowRef<ApiNowPlaying> = shallowRef(NowPlaying);
-    const npTimestamp: Ref<number> = ref(0);
+    const currentTime = ref<number>(Math.floor(Date.now() / 1000));
+    const currentTrackDuration = ref<number>(0);
+    const currentTrackElapsed = ref<number>(0);
 
-    const currentTime: Ref<number> = ref(Math.floor(Date.now() / 1000));
-    const currentTrackDuration: Ref<number> = ref(0);
-    const currentTrackElapsed: Ref<number> = ref(0);
+    const {getApiUrl} = useApiRouter();
 
     const setNowPlaying = (np_new: ApiNowPlaying) => {
+        if (!np_new.now_playing) {
+            return;
+        }
+
         np.value = np_new;
         npTimestamp.value = Date.now();
 
@@ -41,13 +38,13 @@ export default function useNowPlaying(initialProps: NowPlayingProps) {
 
         // Update the browser metadata for browsers that support it (i.e. Mobile Chrome)
         if ('mediaSession' in navigator) {
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: np_new.now_playing.song.title,
-                artist: np_new.now_playing.song.artist,
+            navigator.mediaSession.metadata = new MediaMetadata(omitBy({
+                title: np_new.now_playing.song?.title ?? undefined,
+                artist: np_new.now_playing.song?.artist ?? undefined,
                 artwork: [
-                    {src: np_new.now_playing.song.art}
+                    {src: np_new.now_playing.song?.art ?? undefined}
                 ]
-            });
+            }, isUndefined));
 
             const setPositionState = (duration: number, position: number): void => {
                 if (position <= duration) {
@@ -61,6 +58,10 @@ export default function useNowPlaying(initialProps: NowPlayingProps) {
             setPositionState(np_new.now_playing.duration ?? 0, np_new.now_playing.elapsed ?? 0);
 
             navigator.mediaSession.setActionHandler("seekto", () => {
+                if (!np_new.now_playing) {
+                    return;
+                }
+
                 setPositionState(np_new.now_playing.duration ?? 0, np_new.now_playing.elapsed ?? 0);
             });
         }
@@ -70,119 +71,156 @@ export default function useNowPlaying(initialProps: NowPlayingProps) {
         }));
     }
 
-    if (props.useSse) {
-        const sseBaseUri = getApiUrl('/live/nowplaying/sse');
-        const sseUriParams = new URLSearchParams({
-            "cf_connect": JSON.stringify({
-                "subs": {
-                    [`station:${props.stationShortName}`]: {
-                        "recover": true
-                    },
-                }
-            }),
-        });
-        const sseUri = sseBaseUri.value + '?' + sseUriParams.toString();
+    let scope: EffectScope | null = null;
 
-        const handleSseData = (ssePayload: SsePayload, useTime: boolean = true) => {
-            const jsonData = ssePayload.data;
-
-            if (useTime && 'current_time' in jsonData) {
-                currentTime.value = jsonData.current_time;
-            }
-
-            if (npTimestamp.value === 0) {
-                setNowPlaying(jsonData.np);
-            } else {
-                // SSE events often dispatch *too quickly* relative to the delays involved in
-                // Liquidsoap and Icecast, so we delay these changes from showing up to better
-                // approximate when listeners will really hear the track change.
-                setTimeout(() => {
-                    setNowPlaying(jsonData.np);
-                }, 3000);
-            }
+    const initNowPlaying = (settings: ApiNowPlayingVueProps) => {
+        if (scope !== null) {
+            scope.stop(false);
         }
 
-        const {data} = useEventSource(sseUri);
-        watch(data, (dataRaw: string) => {
-            const jsonData = JSON.parse(dataRaw);
+        scope = effectScope();
+        scope.run(() => {
+            const {stationShortName, useSse, useStatic} = settings;
 
-            if ('connect' in jsonData) {
-                const connectData = jsonData.connect;
+            if (useSse) {
+                const sseBaseUri = getApiUrl('/live/nowplaying/sse');
+                const sseUriParams = new URLSearchParams({
+                    "cf_connect": JSON.stringify({
+                        "subs": {
+                            [`station:${stationShortName}`]: {
+                                "recover": true
+                            },
+                        }
+                    }),
+                });
+                const sseUri = sseBaseUri.value + '?' + sseUriParams.toString();
 
-                // New Centrifugo time format
-                if ('time' in connectData) {
-                    currentTime.value = Math.floor(connectData.time / 1000);
-                }
+                const handleSseData = (ssePayload: SsePayload, useTime: boolean = true) => {
+                    const jsonData = ssePayload.data;
 
-                // New Centrifugo cached NowPlaying initial push.
-                for (const subName in connectData.subs) {
-                    const sub = connectData.subs[subName];
-                    if ('publications' in sub && sub.publications.length > 0) {
-                        sub.publications.forEach((initialRow) => handleSseData(initialRow, false));
+                    if (useTime && jsonData.current_time) {
+                        currentTime.value = jsonData.current_time;
+                    }
+
+                    if (npTimestamp.value === 0) {
+                        setNowPlaying(jsonData.np);
+                    } else {
+                        // SSE events often dispatch *too quickly* relative to the delays involved in
+                        // Liquidsoap and Icecast, so we delay these changes from showing up to better
+                        // approximate when listeners will really hear the track change.
+                        setTimeout(() => {
+                            setNowPlaying(jsonData.np);
+                        }, 3000);
                     }
                 }
-            } else if ('pub' in jsonData) {
-                handleSseData(jsonData.pub);
+
+                const {data} = useEventSource(sseUri);
+                watch(data, (dataRaw: string | null) => {
+                    if (!dataRaw) {
+                        return;
+                    }
+
+                    const jsonData = JSON.parse(dataRaw);
+
+                    if ('connect' in jsonData) {
+                        const connectData = jsonData.connect;
+
+                        // New Centrifugo time format
+                        if ('time' in connectData) {
+                            currentTime.value = Math.floor(connectData.time / 1000);
+                        }
+
+                        // New Centrifugo cached NowPlaying initial push.
+                        for (const subName in connectData.subs) {
+                            const sub = connectData.subs[subName];
+                            if ('publications' in sub && sub.publications.length > 0) {
+                                sub.publications.forEach((initialRow: SsePayload) => handleSseData(initialRow, false));
+                            }
+                        }
+                    } else if ('pub' in jsonData) {
+                        handleSseData(jsonData.pub);
+                    }
+                });
+            } else {
+                const nowPlayingUri = useStatic
+                    ? getApiUrl(`/nowplaying_static/${stationShortName}.json`)
+                    : getApiUrl(`/nowplaying/${stationShortName}`);
+
+                const timeUri = getApiUrl('/time');
+                const {axiosSilent} = useAxios();
+
+                const axiosNoCacheConfig = {
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache',
+                        'Expires': '0',
+                    }
+                };
+
+                const visibility = useDocumentVisibility();
+
+                useIntervalFn(
+                    () => void (async () => {
+                        const {data} = await axiosSilent.get<ApiNowPlaying>(nowPlayingUri.value, axiosNoCacheConfig);
+                        setNowPlaying(data);
+                    })(),
+                    computed(() => {
+                        if (useStatic) {
+                            return visibility.value === 'visible' ? 10000 : 30000;
+                        } else {
+                            return visibility.value === 'visible' ? 20000 : 60000;
+                        }
+                    }),
+                    {
+                        immediateCallback: true
+                    }
+                );
+
+                useIntervalFn(
+                    () => void (async () => {
+                        const {data} = await axiosSilent.get(timeUri.value, axiosNoCacheConfig);
+                        currentTime.value = data.timestamp;
+                    })(),
+                    computed(() =>
+                        visibility.value === 'visible' ? 600000 : 1200000
+                    ),
+                    {
+                        immediateCallback: true
+                    }
+                );
             }
-        });
-    } else {
-        const nowPlayingUri = props.useStatic
-            ? getApiUrl(`/nowplaying_static/${props.stationShortName}.json`)
-            : getApiUrl(`/nowplaying/${props.stationShortName}`);
 
-        const timeUri = getApiUrl('/time');
-        const {axiosSilent} = useAxios();
+            useIntervalFn(
+                () => {
+                    const currentTrackPlayedAt = np.value?.now_playing?.played_at ?? 0;
+                    let elapsed = currentTime.value - currentTrackPlayedAt;
 
-        const axiosNoCacheConfig = {
-            headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'Expires': '0',
-            }
-        };
+                    if (elapsed < 0) {
+                        elapsed = 0;
+                    } else if (elapsed >= currentTrackDuration.value) {
+                        elapsed = currentTrackDuration.value;
+                    }
 
-        const checkNowPlaying = () => {
-            axiosSilent.get(nowPlayingUri.value, axiosNoCacheConfig).then((response) => {
-                setNowPlaying(response.data);
-
-                setTimeout(checkNowPlaying, (!document.hidden) ? 15000 : 30000);
-            }).catch(() => {
-                setTimeout(checkNowPlaying, (!document.hidden) ? 30000 : 120000);
-            });
-        };
-
-        const checkTime = () => {
-            void axiosSilent.get(timeUri.value, axiosNoCacheConfig).then((response) => {
-                currentTime.value = response.data.timestamp;
-            }).finally(() => {
-                setTimeout(checkTime, (!document.hidden) ? 300000 : 600000);
-            });
-        };
-
-        onMounted(() => {
-            checkTime();
-            checkNowPlaying();
+                    currentTrackElapsed.value = elapsed;
+                    currentTime.value = currentTime.value + 1;
+                },
+                1000,
+                {
+                    immediateCallback: true
+                }
+            );
         });
     }
 
-    onMounted(() => {
-        useIntervalFn(
-            () => {
-                const currentTrackPlayedAt = np.value?.now_playing?.played_at ?? 0;
-                let elapsed = currentTime.value - currentTrackPlayedAt;
-
-                if (elapsed < 0) {
-                    elapsed = 0;
-                } else if (elapsed >= currentTrackDuration.value) {
-                    elapsed = currentTrackDuration.value;
-                }
-
-                currentTrackElapsed.value = elapsed;
-                currentTime.value = currentTime.value + 1;
-            },
-            1000
-        );
-    });
+    if (isRef(props)) {
+        watch(props, (newProps) => {
+            initNowPlaying(newProps);
+        }, {
+            immediate: true
+        });
+    } else {
+        initNowPlaying(props);
+    }
 
     const currentTrackPercent = computed(() => {
         if (!currentTrackDuration.value) {

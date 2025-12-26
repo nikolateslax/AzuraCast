@@ -53,7 +53,7 @@
                             </legend>
 
                             <p
-                                v-if="version"
+                                v-if="record.version"
                                 class="text-success card-text"
                             >
                                 {{ langInstalledVersion }}
@@ -71,6 +71,16 @@
                             :valid-mime-types="['.tar.gz']"
                             @complete="relist"
                         />
+
+                        <div v-if="record.version" class="block-buttons buttons mt-3">
+                            <button
+                                type="button"
+                                class="btn btn-danger"
+                                @click="doDelete"
+                            >
+                                {{ $gettext('Uninstall') }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </loading>
@@ -85,12 +95,19 @@ import {useTranslate} from "~/vendor/gettext";
 import {useAxios} from "~/vendor/axios";
 import Loading from "~/components/Common/Loading.vue";
 import CardPage from "~/components/Common/CardPage.vue";
-import {getApiUrl} from "~/router";
+import {ApiAdminShoutcastStatus} from "~/entities/ApiInterfaces.ts";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
+import {useDialog} from "~/components/Common/Dialogs/useDialog.ts";
 
+const {getApiUrl} = useApiRouter();
 const apiUrl = getApiUrl('/admin/shoutcast');
 
+type Row = ApiAdminShoutcastStatus;
+
 const isLoading = ref(true);
-const version = ref(null);
+const record = ref<Row>({
+    version: null
+});
 
 const {$gettext} = useTranslate();
 
@@ -98,20 +115,36 @@ const langInstalledVersion = computed(() => {
     return $gettext(
         'Shoutcast version "%{version}" is currently installed.',
         {
-            version: version.value
+            version: record.value.version ?? 'N/A'
         }
     );
 });
 
 const {axios} = useAxios();
 
-const relist = () => {
+const relist = async () => {
     isLoading.value = true;
-    void axios.get(apiUrl.value).then((resp) => {
-        version.value = resp.data.version;
-        isLoading.value = false;
-    });
+
+    const {data} = await axios.get<Row>(apiUrl.value);
+    record.value = data;
+    isLoading.value = false;
 };
 
 onMounted(relist);
+
+const {confirmDelete} = useDialog();
+
+const doDelete = async () => {
+    const {value} = await confirmDelete({
+        title: $gettext('Remove Shoutcast 2 DNAS?'),
+        confirmButtonText: $gettext('Uninstall')
+    });
+
+    if (!value) {
+        return;
+    }
+
+    await axios.delete<Row>(apiUrl.value);
+    await relist();
+}
 </script>

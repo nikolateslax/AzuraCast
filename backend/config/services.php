@@ -86,11 +86,27 @@ return [
 
         // Specify MariaDB version for local Docker installs. Let non-local ones auto-detect via Doctrine.
         if (isset($connectionOptions['unix_socket']) || $environment->isTesting()) {
-            $connectionOptions['serverVersion'] = '11.4.4-MariaDB-1';
+            $connectionOptions['serverVersion'] = '11.8.2-MariaDB-1';
         }
 
         $config = new Doctrine\DBAL\Configuration();
         $config->setResultCache($psr6Cache);
+
+        // Add middleware that forces a custom platform, for high-precision DATETIMEs.
+        $config->setMiddlewares([
+            new class implements Doctrine\DBAL\Driver\Middleware {
+                public function wrap(Doctrine\DBAL\Driver $driver): Doctrine\DBAL\Driver
+                {
+                    return new class ($driver) extends Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware {
+                        public function getDatabasePlatform(
+                            Doctrine\DBAL\ServerVersionProvider $versionProvider
+                        ): Doctrine\DBAL\Platforms\AbstractPlatform {
+                            return new App\Doctrine\Platform\MariaDbPlatform();
+                        }
+                    };
+                }
+            },
+        ]);
 
         /** @phpstan-ignore-next-line */
         return Doctrine\DBAL\DriverManager::getConnection($connectionOptions, $config);
@@ -109,7 +125,7 @@ return [
         if ($environment->isCli()) {
             $psr6Cache = new Symfony\Component\Cache\Adapter\ArrayAdapter();
         } else {
-            $psr6Cache = new Symfony\Component\Cache\Adapter\ProxyAdapter($psr6Cache, 'doctrine.');
+            $psr6Cache = App\Cache\CacheNamespace::Doctrine->withNamespace($psr6Cache);
         }
 
         $mappingClassesPaths = [$environment->getBackendDirectory() . '/src/Entity'];
@@ -123,22 +139,24 @@ return [
         $mappingClassesPaths = $buildDoctrineMappingPathsEvent->getMappingClassesPaths();
 
         // Fetch and store entity manager.
-        $config = Doctrine\ORM\ORMSetup::createAttributeMetadataConfiguration(
+        $config = Doctrine\ORM\ORMSetup::createAttributeMetadataConfig(
             $mappingClassesPaths,
             !$environment->isProduction(),
-            $environment->getTempDirectory() . '/proxies',
-            $psr6Cache
+            cache: $psr6Cache
         );
 
-        $config->setAutoGenerateProxyClasses(
-            Doctrine\ORM\Proxy\ProxyFactory::AUTOGENERATE_FILE_NOT_EXISTS_OR_CHANGED
-        );
+        $config->enableNativeLazyObjects(true);
 
         // Debug mode:
         // $config->setSQLLogger(new Doctrine\DBAL\Logging\EchoSQLLogger);
 
         $config->addCustomNumericFunction('RAND', DoctrineExtensions\Query\Mysql\Rand::class);
         $config->addCustomStringFunction('FIELD', DoctrineExtensions\Query\Mysql\Field::class);
+
+        Doctrine\DBAL\Types\Type::overrideType(
+            'datetime_immutable',
+            App\Doctrine\Types\UtcDateTimeImmutableType::class
+        );
 
         $eventManager = new Doctrine\Common\EventManager();
         $eventManager->addEventSubscriber($eventRequiresRestart);
@@ -237,6 +255,7 @@ return [
         Environment $environment,
         Doctrine\ORM\EntityManagerInterface $em,
         Doctrine\Migrations\Configuration\Migration\ConfigurationLoader $migrateConfig,
+        Monolog\Logger $logger,
     ) {
         $console = new App\Console\Application(
             $environment->getAppName() . ' Command Line Tools ('
@@ -244,6 +263,10 @@ return [
             $version->getVersion()
         );
         $console->setDispatcher($dispatcher);
+
+        $logHandler = new Symfony\Bridge\Monolog\Handler\ConsoleHandler();
+        $logger->pushHandler($logHandler);
+        $dispatcher->addSubscriber($logHandler);
 
         // Doctrine ORM/DBAL
         Doctrine\ORM\Tools\Console\ConsoleRunner::addCommands(
@@ -254,7 +277,8 @@ return [
         // Add Doctrine Migrations
         $migrateFactory = Doctrine\Migrations\DependencyFactory::fromEntityManager(
             $migrateConfig,
-            new Doctrine\Migrations\Configuration\EntityManager\ExistingEntityManager($em)
+            new Doctrine\Migrations\Configuration\EntityManager\ExistingEntityManager($em),
+            $logger
         );
         Doctrine\Migrations\Tools\Console\ConsoleRunner::addCommands($console, $migrateFactory);
 
@@ -299,11 +323,6 @@ return [
         $logger = new Monolog\Logger($environment->getAppName());
         $loggingLevel = $environment->getLogLevel();
 
-        if ($environment->isCli() || $environment->isDocker()) {
-            $logStderr = new Monolog\Handler\StreamHandler('php://stderr', $loggingLevel, true);
-            $logger->pushHandler($logStderr);
-        }
-
         $logFile = new Monolog\Handler\RotatingFileHandler(
             $environment->getTempDirectory() . '/app.log',
             5,
@@ -319,21 +338,42 @@ return [
 
     // Symfony Serializer
     Symfony\Component\Serializer\Serializer::class => static function (
-        App\Doctrine\ReloadableEntityManagerInterface $em
+        App\Doctrine\ReloadableEntityManagerInterface $em,
+        Environment $environment,
+        Psr\Cache\CacheItemPoolInterface $psr6Cache
     ) {
         $classMetaFactory = new Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory(
             new Symfony\Component\Serializer\Mapping\Loader\AttributeLoader()
         );
 
+        $reflectionExtractor = new Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor(
+            mutatorPrefixes: [],
+            accessorPrefixes: [],
+            arrayMutatorPrefixes: [],
+            enableConstructorExtraction: false,
+            magicMethodsFlags: Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor::DISALLOW_MAGIC_METHODS
+        );
+
+        if ($environment->isProduction()) {
+            $classMetaFactory = new Symfony\Component\Serializer\Mapping\Factory\CacheClassMetadataFactory(
+                $classMetaFactory,
+                $psr6Cache
+            );
+        }
+
         $normalizers = [
             new Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer(),
+            new App\Normalizer\DateTimeNormalizer(),
+            new App\Normalizer\BigNumberNormalizer(),
             new Symfony\Component\Serializer\Normalizer\JsonSerializableNormalizer(),
+            new Symfony\Component\Serializer\Normalizer\CustomNormalizer(),
             new Azura\Normalizer\DoctrineEntityNormalizer(
                 $em,
                 classMetadataFactory: $classMetaFactory
             ),
             new Symfony\Component\Serializer\Normalizer\ObjectNormalizer(
-                classMetadataFactory: $classMetaFactory
+                classMetadataFactory: $classMetaFactory,
+                propertyTypeExtractor: $reflectionExtractor
             ),
         ];
         $encoders = [
@@ -439,11 +479,11 @@ return [
     ) {
         $settings = $settingsRepo->readSettings();
 
-        if ($settings->getMailEnabled()) {
+        if ($settings->mail_enabled) {
             $requiredSettings = [
-                'mailSenderEmail' => $settings->getMailSenderEmail(),
-                'mailSmtpHost' => $settings->getMailSmtpHost(),
-                'mailSmtpPort' => $settings->getMailSmtpPort(),
+                'mailSenderEmail' => $settings->mail_sender_email,
+                'mailSmtpHost' => $settings->mail_smtp_host,
+                'mailSmtpPort' => $settings->mail_smtp_port,
             ];
 
             $hasAllSettings = true;
@@ -456,16 +496,19 @@ return [
 
             if ($hasAllSettings) {
                 $transport = new Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
-                    $settings->getMailSmtpHost(),
-                    $settings->getMailSmtpPort(),
-                    $settings->getMailSmtpSecure(),
+                    $settings->mail_smtp_host ?? '',
+                    $settings->mail_smtp_port,
+                    $settings->mail_smtp_secure,
                     $eventDispatcher,
                     $logger
                 );
 
-                if (!empty($settings->getMailSmtpUsername())) {
-                    $transport->setUsername($settings->getMailSmtpUsername());
-                    $transport->setPassword($settings->getMailSmtpPassword());
+                if (!empty($settings->mail_smtp_username)) {
+                    $transport->setUsername($settings->mail_smtp_username);
+                }
+
+                if (!empty($settings->mail_smtp_password)) {
+                    $transport->setPassword($settings->mail_smtp_password);
                 }
 
                 return $transport;

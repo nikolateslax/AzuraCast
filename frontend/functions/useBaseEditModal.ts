@@ -1,105 +1,101 @@
-import {computed, ComputedRef, nextTick, Ref, ref, toRef} from "vue";
-import mergeExisting from "~/functions/mergeExisting";
-import {useNotify} from "~/functions/useNotify";
+import {computed, ComputedRef, MaybeRef, nextTick, Ref, ref, ShallowRef, toValue} from "vue";
+import {useNotify} from "~/components/Common/Toasts/useNotify.ts";
 import {useAxios} from "~/vendor/axios";
-import {
-    useVuelidateOnForm,
-    VuelidateBlankForm,
-    VuelidateRef,
-    VuelidateValidations
-} from "~/functions/useVuelidateOnForm";
 import ModalForm from "~/components/Common/ModalForm.vue";
-import {AxiosRequestConfig} from "axios";
-import {GlobalConfig} from "@vuelidate/core";
-import {GenericForm} from "~/entities/Forms.ts";
+import {AxiosError, AxiosRequestConfig} from "axios";
+import {ApiError, ApiGenericForm, ApiStatus} from "~/entities/ApiInterfaces.ts";
+import {useMutation, UseMutationOptions, UseMutationReturnType} from "@tanstack/vue-query";
 
 export type ModalFormTemplateRef = InstanceType<typeof ModalForm>;
 
-export interface BaseEditModalProps {
-    createUrl?: string
+export type BaseEditModalProps = {
+    createUrl: string
 }
 
-export interface HasRelistEmit {
+export type HasRelistEmit = {
     (e: 'relist'): void
 }
 
+type Form = ApiGenericForm
+
+type AxiosMutateResponse<T extends Form = Form> = ApiStatus & T
+
+type MutationOptions<
+    SubmittedForm extends Form = Form,
+    ResponseBody extends Form = SubmittedForm
+> = UseMutationOptions<
+    AxiosMutateResponse<ResponseBody>,
+    AxiosError<ApiError>,
+    SubmittedForm
+>
+
+type MutationReturn<
+    SubmittedForm extends Form = Form,
+    ResponseBody extends Form = SubmittedForm
+> = UseMutationReturnType<
+    AxiosMutateResponse<ResponseBody>,
+    AxiosError<ApiError>,
+    SubmittedForm,
+    unknown
+>
+
 export type BaseEditModalEmits = HasRelistEmit;
 
-export interface BaseEditModalOptions<T extends GenericForm = GenericForm> extends GlobalConfig {
-    resetForm?(originalResetForm: () => void): void,
-
-    clearContents?(resetForm: () => void): void,
-
-    populateForm?(data: Partial<T>, form: Ref<T>): void,
-
-    getSubmittableFormData?(form: Ref<T>, isEditMode: ComputedRef<boolean>): Record<string, any>,
-
-    buildSubmitRequest?(): AxiosRequestConfig,
-
-    onSubmitSuccess?(): void,
-
-    onSubmitError?(error: any): void,
+export type BaseEditModalOptions<SubmittedForm extends Form = Form> = {
+    buildSubmitRequest?: (data: SubmittedForm) => AxiosRequestConfig,
+    onSubmitSuccess?: (
+        data: AxiosMutateResponse,
+        variables: SubmittedForm,
+        context: unknown
+    ) => void,
+    onSubmitError?: (
+        error: AxiosError<ApiError, any>,
+        variables: SubmittedForm,
+        context: unknown
+    ) => void,
 }
 
-export function useBaseEditModal<T extends GenericForm = GenericForm>(
-    props: BaseEditModalProps,
+export type ValidateReturn<T extends Form = Form> = {
+    valid: boolean,
+    data?: T
+}
+
+export function useBaseEditModal<
+    SubmittedForm extends Form = Form,
+    ResponseBody extends Form = SubmittedForm
+>(
+    createUrl: MaybeRef<string | null>,
     emit: BaseEditModalEmits,
-    $modal: Ref<ModalFormTemplateRef>,
-    validations?: VuelidateValidations<T>,
-    blankForm?: VuelidateBlankForm<T>,
-    options: BaseEditModalOptions<T> = {}
+    $modal: Readonly<ShallowRef<ModalFormTemplateRef | null>>,
+    resetForm: () => void,
+    populateForm: (data: Partial<ResponseBody>) => void,
+    validateForm: (isEditMode: boolean) => Promise<ValidateReturn<SubmittedForm>>,
+    options: BaseEditModalOptions<SubmittedForm> = {},
+    mutationOptions: Partial<MutationOptions<SubmittedForm, ResponseBody>> = {},
 ): {
     loading: Ref<boolean>,
     error: Ref<any>,
-    editUrl: Ref<string>,
+    editUrl: Ref<string | null>,
     isEditMode: ComputedRef<boolean>,
-    form: Ref<T>,
-    v$: VuelidateRef<T>,
-    resetForm: () => void,
+    mutation: MutationReturn<SubmittedForm, ResponseBody>,
     clearContents: () => void,
     create: () => void,
-    edit: (recordUrl: string) => void,
-    doSubmit: () => void,
+    edit: (recordUrl: string) => Promise<void>,
+    doSubmit: () => Promise<void>,
     close: () => void
 } {
-    const createUrl = toRef(props, 'createUrl');
-
-    const loading: Ref<boolean> = ref<boolean>(false);
-    const error: Ref<any> = ref(null);
-    const editUrl: Ref<string> = ref<string>(null);
+    const fetchLoading = ref<boolean>(false);
+    const error = ref<any>(null);
+    const editUrl = ref<string | null>(null);
 
     const isEditMode: ComputedRef<boolean> = computed(() => {
         return editUrl.value !== null;
     });
 
-    const {
-        form,
-        v$,
-        resetForm: originalResetForm
-    } = useVuelidateOnForm(
-        validations,
-        blankForm,
-        options
-    );
-
-    const resetForm = (): void => {
-        if (typeof options.resetForm === 'function') {
-            options.resetForm(originalResetForm);
-            return;
-        }
-
-        originalResetForm();
-    };
-
     const clearContents = (): void => {
-        if (typeof options.clearContents === 'function') {
-            options.clearContents(resetForm);
-            return;
-        }
-
         resetForm();
 
-        loading.value = false;
+        fetchLoading.value = false;
         error.value = null;
         editUrl.value = null;
     };
@@ -107,122 +103,125 @@ export function useBaseEditModal<T extends GenericForm = GenericForm>(
     const create = (): void => {
         clearContents();
 
-        $modal.value.show();
+        $modal.value?.show();
 
         void nextTick(() => {
             resetForm();
         });
     };
-
-    const populateForm = (data: Partial<T>): void => {
-        if (typeof options.populateForm === 'function') {
-            options.populateForm(data, form);
-            return;
-        }
-
-        form.value = mergeExisting(form.value, data);
-    }
 
     const {notifySuccess} = useNotify();
     const {axios} = useAxios();
 
-    const doLoad = (): void => {
-        loading.value = true;
+    const doLoad = async (): Promise<void> => {
+        fetchLoading.value = true;
 
-        axios.get(editUrl.value).then((resp) => {
-            populateForm(resp.data);
-        }).catch(() => {
+        if (!editUrl.value) {
+            throw new Error("No edit URL!");
+        }
+
+        try {
+            const {data} = await axios.get(editUrl.value);
+            populateForm(data);
+        } catch {
             close();
-        }).finally(() => {
-            loading.value = false;
-        });
+        } finally {
+            fetchLoading.value = false;
+        }
     };
 
-    const edit = (recordUrl: string): void => {
+    const edit = async (recordUrl: string): Promise<void> => {
         clearContents();
 
         editUrl.value = recordUrl;
-        $modal.value.show();
+        $modal.value?.show();
 
-        void nextTick(() => {
-            resetForm();
-            doLoad();
-        })
+        await nextTick();
+
+        resetForm();
+        await doLoad();
     };
 
-    const getSubmittableFormData = (): Record<string, any> => {
-        if (typeof options.getSubmittableFormData === 'function') {
-            return options.getSubmittableFormData(form, isEditMode);
+    const buildSubmitRequest = (data: SubmittedForm): AxiosRequestConfig<SubmittedForm> => {
+        if (typeof options.buildSubmitRequest === 'function') {
+            return options.buildSubmitRequest(data);
         }
 
-        return form.value;
-    };
+        const url = (isEditMode.value && editUrl.value)
+            ? editUrl.value
+            : toValue(createUrl);
 
-    const buildSubmitRequest = (): AxiosRequestConfig => {
-        if (typeof options.buildSubmitRequest === 'function') {
-            return options.buildSubmitRequest();
+        if (url === null) {
+            throw new Error("No valid URL to submit to!");
         }
 
         return {
             method: (isEditMode.value)
                 ? 'PUT'
                 : 'POST',
-            url: (isEditMode.value)
-                ? editUrl.value
-                : createUrl.value,
-            data: getSubmittableFormData()
+            url,
+            data: data
         };
     };
 
     const close = (): void => {
-        $modal.value.hide();
+        $modal.value?.hide();
     };
 
-    const onSubmitSuccess = (): void => {
-        if (typeof options.onSubmitSuccess === 'function') {
-            options.onSubmitSuccess();
-            return;
-        }
+    const mutation: MutationReturn<SubmittedForm, ResponseBody> = useMutation({
+        mutationFn: async (data: SubmittedForm): Promise<AxiosMutateResponse<ResponseBody>> => {
+            const {data: returnData} = await axios<AxiosMutateResponse<ResponseBody>>(
+                buildSubmitRequest(data)
+            );
 
-        notifySuccess();
-        emit('relist');
-        close();
-    };
-
-    const onSubmitError = (err: any): void => {
-        if (typeof options.onSubmitError === 'function') {
-            options.onSubmitError(err);
-            return;
-        }
-
-        error.value = err.response.data.message;
-    };
-
-    const doSubmit = (): void => {
-        v$.value.$touch();
-        v$.value.$validate().then((isValid) => {
-            if (!isValid) {
+            return returnData;
+        },
+        onSuccess: (
+            data,
+            variables,
+            context
+        ): void => {
+            if (typeof options.onSubmitSuccess === 'function') {
+                options.onSubmitSuccess(data, variables, context);
                 return;
             }
 
-            error.value = null;
+            notifySuccess();
+            emit('relist');
+            close();
+        },
+        onError: (err, variables, context): void => {
+            if (typeof options.onSubmitError === 'function') {
+                options.onSubmitError(err, variables, context);
+                return;
+            }
 
-            axios(buildSubmitRequest()).then(() => {
-                onSubmitSuccess();
-            }).catch((err) => {
-                onSubmitError(err);
-            });
-        });
+            error.value = err.response?.data?.message;
+        },
+        ...mutationOptions
+    });
+
+    const doSubmit = async (): Promise<void> => {
+        const {valid, data} = await validateForm(isEditMode.value);
+
+        if (!valid || !data) {
+            return;
+        }
+
+        error.value = null;
+        mutation.mutate(data);
     };
+
+    const loading = computed(
+        () => fetchLoading.value || mutation.isPending.value
+    );
 
     return {
         loading,
         error,
         editUrl,
         isEditMode,
-        form,
-        v$,
-        resetForm,
+        mutation,
         clearContents,
         create,
         edit,

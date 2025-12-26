@@ -12,7 +12,8 @@
                     class="btn btn-sm btn-dark"
                     @click="doRemove()"
                 >
-                    <icon :icon="IconRemove" />
+                    <icon-ic-remove/>
+
                     <span>
                         {{ $gettext('Remove') }}
                     </span>
@@ -24,7 +25,7 @@
                 <form-group-field
                     :id="'edit_form_start_time_'+index"
                     class="col-md-4"
-                    :field="v$.start_time"
+                    :field="r$.start_time"
                     :label="$gettext('Start Time')"
                     :description="$gettext('To play once per day, set the start and end times to the same value.')"
                 >
@@ -40,7 +41,7 @@
                 <form-group-field
                     :id="'edit_form_end_time_'+index"
                     class="col-md-4"
-                    :field="v$.end_time"
+                    :field="r$.end_time"
                     :label="$gettext('End Time')"
                     :description="$gettext('If the end time is before the start time, the playlist will play overnight.')"
                 >
@@ -64,7 +65,7 @@
                 <form-group-field
                     :id="'edit_form_start_date_'+index"
                     class="col-md-4"
-                    :field="v$.start_date"
+                    :field="r$.start_date"
                     input-type="date"
                     :label="$gettext('Start Date')"
                     :description="$gettext('To set this schedule to run only within a certain date range, specify a start and end date.')"
@@ -73,7 +74,7 @@
                 <form-group-field
                     :id="'edit_form_end_date_'+index"
                     class="col-md-4"
-                    :field="v$.end_date"
+                    :field="r$.end_date"
                     input-type="date"
                     :label="$gettext('End Date')"
                 />
@@ -81,7 +82,7 @@
                 <form-group-checkbox
                     :id="'edit_form_loop_once_'+index"
                     class="col-md-4"
-                    :field="v$.loop_once"
+                    :field="r$.loop_once"
                     :label="$gettext('Loop Once')"
                     :description="$gettext('Only loop through playlist once.')"
                 />
@@ -89,7 +90,7 @@
                 <form-group-multi-check
                     :id="'edit_form_days_'+index"
                     class="col-md-4"
-                    :field="v$.days"
+                    :field="r$.days"
                     :label="$gettext('Scheduled Play Days of Week')"
                     :description="$gettext('Leave blank to play on every day of the week.')"
                     :options="dayOptions"
@@ -101,18 +102,17 @@
 </template>
 
 <script setup lang="ts">
-import PlaylistTime from '~/components/Common/TimeCode.vue';
-import Icon from "~/components/Common/Icon.vue";
+import PlaylistTime from "~/components/Common/TimeCode.vue";
 import FormGroupField from "~/components/Form/FormGroupField.vue";
-import {required} from "@vuelidate/validators";
-import useVuelidate from "@vuelidate/core";
+import {required} from "@regle/rules";
 import {toRef} from "vue";
 import {useTranslate} from "~/vendor/gettext";
 import FormGroupCheckbox from "~/components/Form/FormGroupCheckbox.vue";
 import FormMarkup from "~/components/Form/FormMarkup.vue";
 import FormGroupMultiCheck from "~/components/Form/FormGroupMultiCheck.vue";
 import TimeZone from "~/components/Stations/Common/TimeZone.vue";
-import {IconRemove} from "~/components/Common/icons";
+import {useAppScopedRegle} from "~/vendor/regle.ts";
+import IconIcRemove from "~icons/ic/baseline-remove";
 
 interface PlaylistScheduleRow {
     start_time: number,
@@ -128,18 +128,19 @@ const props = defineProps<{
     row: PlaylistScheduleRow
 }>();
 
-const emit = defineEmits(['remove']);
+const emit = defineEmits<{
+    (e: 'remove'): void
+}>();
 
-const v$ = useVuelidate(
+const {r$} = useAppScopedRegle(
+    toRef(props, 'row'),
     {
-        'start_time': {required},
-        'end_time': {required},
-        'start_date': {},
-        'end_date': {},
-        'days': {},
-        'loop_once': {}
+        start_time: {required},
+        end_time: {required},
     },
-    toRef(props, 'row')
+    {
+        namespace: 'stations-playlists'
+    }
 );
 
 const {$gettext} = useTranslate();

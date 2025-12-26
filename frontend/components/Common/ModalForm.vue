@@ -10,7 +10,7 @@
     >
         <template #default="slotProps">
             <div
-                v-if="error != null"
+                v-if="error"
                 class="alert alert-danger"
             >
                 {{ error }}
@@ -43,6 +43,7 @@
                 <button
                     class="btn"
                     :class="(disableSaveButton) ? 'btn-danger' : 'btn-primary'"
+                    :disabled="loading"
                     type="submit"
                     @click="doSubmit"
                 >
@@ -81,7 +82,7 @@ withDefaults(
         loading?: boolean,
         disableSaveButton?: boolean,
         noEnforceFocus?: boolean,
-        error?: string,
+        error?: string | null,
     }>(),
     {
         size: 'lg',
@@ -93,7 +94,11 @@ withDefaults(
     }
 );
 
-const emit = defineEmits(['submit', 'shown', 'hidden']);
+const emit = defineEmits<{
+    (e: 'submit'): void,
+    (e: 'shown'): void,
+    (e: 'hidden'): void
+}>();
 
 const doSubmit = () => {
     emit('submit');

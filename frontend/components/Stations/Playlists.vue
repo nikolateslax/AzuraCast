@@ -39,16 +39,18 @@
                         
                         <data-table
                             id="station_playlists"
-                            ref="$dataTable"
                             paginated
                             :fields="fields"
-                            :api-url="listUrl"
+                            :provider="listItemProvider"
                             detailed
                         >
                             <template #cell(name)="row">
                                 <h5 class="m-0">
                                     {{ row.item.name }}
                                 </h5>
+                                <p v-if="row.item.description" class="text-muted mb-1">
+                                    {{ row.item.description }}
+                                </p>
                                 <div class="badges">
                                     <span class="badge text-bg-secondary">
                                         <template v-if="row.item.source === 'songs'">
@@ -170,7 +172,8 @@
                                         type="button"
                                         @click="toggleDetails()"
                                     >
-                                        <icon :icon="isActive ? IconContract : IconExpand" />
+                                        <icon-bi-contract v-if="isActive"/>
+                                        <icon-bi-expand v-else/>
 
                                         {{ $gettext('More') }}
                                     </button>
@@ -275,58 +278,58 @@
     <edit-modal
         ref="$editModal"
         :create-url="listUrl"
-        @relist="relist"
-        @needs-restart="mayNeedRestart"
+        @relist="() => relist()"
+        @needs-restart="() => mayNeedRestart()"
     />
     <reorder-modal ref="$reorderModal" />
     <queue-modal ref="$queueModal" />
     <reorder-modal ref="$reorderModal" />
     <import-modal
         ref="$importModal"
-        @relist="relist"
+        @relist="() => relist()"
     />
     <clone-modal
         ref="$cloneModal"
-        @relist="relist"
-        @needs-restart="mayNeedRestart"
+        @relist="() => relist()"
+        @needs-restart="() => mayNeedRestart()"
     />
     <apply-to-modal
         ref="$applyToModal"
-        @relist="relist"
+        @relist="() => relist()"
     />
 </template>
 
 <script setup lang="ts">
-import DataTable, {DataTableField} from '~/components/Common/DataTable.vue';
-import EditModal from './Playlists/EditModal.vue';
-import ReorderModal from './Playlists/ReorderModal.vue';
-import ImportModal from './Playlists/ImportModal.vue';
-import QueueModal from './Playlists/QueueModal.vue';
-import CloneModal from './Playlists/CloneModal.vue';
-import ApplyToModal from "./Playlists/ApplyToModal.vue";
+import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
+import EditModal from "~/components/Stations/Playlists/EditModal.vue";
+import ReorderModal from "~/components/Stations/Playlists/ReorderModal.vue";
+import ImportModal from "~/components/Stations/Playlists/ImportModal.vue";
+import QueueModal from "~/components/Stations/Playlists/QueueModal.vue";
+import CloneModal from "~/components/Stations/Playlists/CloneModal.vue";
+import ApplyToModal from "~/components/Stations/Playlists/ApplyToModal.vue";
 import {useTranslate} from "~/vendor/gettext";
 import {useTemplateRef} from "vue";
 import useHasEditModal from "~/functions/useHasEditModal";
 import {useMayNeedRestart} from "~/functions/useMayNeedRestart";
-import {useNotify} from "~/functions/useNotify";
+import {useNotify} from "~/components/Common/Toasts/useNotify.ts";
 import {useAxios} from "~/vendor/axios";
 import useConfirmAndDelete from "~/functions/useConfirmAndDelete";
 import {useLuxon} from "~/vendor/luxon";
-import {getStationApiUrl} from "~/router";
 import TimeZone from "~/components/Stations/Common/TimeZone.vue";
 import Tabs from "~/components/Common/Tabs.vue";
 import Tab from "~/components/Common/Tab.vue";
 import AddButton from "~/components/Common/AddButton.vue";
-import {IconContract, IconExpand} from "~/components/Common/icons.ts";
-import Icon from "~/components/Common/Icon.vue";
 import ScheduleViewTab from "~/components/Stations/Common/ScheduleViewTab.vue";
-import useHasDatatable from "~/functions/useHasDatatable.ts";
 import {EventImpl} from "@fullcalendar/core/internal";
+import {useApiItemProvider} from "~/functions/dataTable/useApiItemProvider.ts";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {toRefs} from "@vueuse/core";
+import IconBiContract from "~icons/bi/chevron-contract";
+import IconBiExpand from "~icons/bi/chevron-expand";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
-const props = defineProps<{
-    useManualAutoDj: boolean
-}>();
-
+const {getStationApiUrl} = useApiRouter();
 const listUrl = getStationApiUrl('/playlists');
 const scheduleUrl = getStationApiUrl('/playlists/schedule');
 
@@ -339,9 +342,14 @@ const fields: DataTableField[] = [
     {key: 'actions', label: $gettext('Actions'), sortable: false, class: 'shrink'}
 ];
 
+const listItemProvider = useApiItemProvider(
+    listUrl,
+    queryKeyWithStation([QueryKeys.StationPlaylists])
+);
+
 const {Duration} = useLuxon();
 
-const formatLength = (length) => {
+const formatLength = (length: number) => {
     if (0 === length) {
         return $gettext('None');
     }
@@ -350,13 +358,10 @@ const formatLength = (length) => {
     return duration.rescale().toHuman();
 };
 
-const $dataTable = useTemplateRef('$dataTable');
-const {refresh: refreshDatatable} = useHasDatatable($dataTable);
-
 const $scheduleTab = useTemplateRef('$scheduleTab');
 
 const relist = () => {
-    refreshDatatable();
+    void listItemProvider.refresh();
     $scheduleTab.value?.refresh();
 }
 
@@ -369,38 +374,41 @@ const doCalendarClick = (event: EventImpl) => {
 
 const $reorderModal = useTemplateRef('$reorderModal');
 
-const doReorder = (url) => {
+const doReorder = (url: string) => {
     $reorderModal.value?.open(url);
 };
 
 const $queueModal = useTemplateRef('$queueModal');
 
-const doQueue = (url) => {
+const doQueue = (url: string) => {
     $queueModal.value?.open(url);
 };
 
 const $importModal = useTemplateRef('$importModal');
 
-const doImport = (url) => {
+const doImport = (url: string) => {
     $importModal.value?.open(url);
 };
 
 const $cloneModal = useTemplateRef('$cloneModal');
 
-const doClone = (name, url) => {
+const doClone = (name: string, url: string) => {
     $cloneModal.value?.open(name, url);
 };
 
 const $applyToModal = useTemplateRef('$applyToModal');
 
-const doApplyTo = (url) => {
+const doApplyTo = (url: string) => {
     $applyToModal.value?.open(url);
 }
 
 const {mayNeedRestart: originalMayNeedRestart} = useMayNeedRestart();
 
+const stationData = useStationData();
+const {useManualAutoDj} = toRefs(stationData);
+
 const mayNeedRestart = () => {
-    if (!props.useManualAutoDj) {
+    if (!useManualAutoDj.value) {
         return;
     }
 
@@ -410,13 +418,13 @@ const mayNeedRestart = () => {
 const {notifySuccess} = useNotify();
 const {axios} = useAxios();
 
-const doModify = (url) => {
-    void axios.put(url).then((resp) => {
-        mayNeedRestart();
+const doModify = async (url: string) => {
+    const {data} = await axios.put(url);
 
-        notifySuccess(resp.data.message);
-        relist();
-    });
+    mayNeedRestart();
+
+    notifySuccess(data.message);
+    relist();
 };
 
 const {doDelete} = useConfirmAndDelete(

@@ -21,16 +21,18 @@
         <template #default>
             <data-table
                 id="public_on_demand"
-                ref="datatable"
                 paginated
                 select-fields
                 :fields="fields"
-                :api-url="listUrl"
+                :provider="listItemProvider"
             >
                 <template #cell(download_url)="row">
                     <play-button
                         class="btn-lg"
-                        :url="row.item.download_url"
+                        :stream="{
+                            title: row.item.media.text,
+                            url: row.item.download_url,
+                        }"
                     />
                     <template v-if="showDownloadButton">
                         <a
@@ -39,7 +41,7 @@
                             target="_blank"
                             :title="$gettext('Download')"
                         >
-                            <icon :icon="IconDownload" />
+                            <icon-ic-cloud-download/>
                         </a>
                     </template>
                 </template>
@@ -52,15 +54,15 @@
 </template>
 
 <script setup lang="ts">
-import InlinePlayer from '../InlinePlayer.vue';
-import DataTable, {DataTableField} from '~/components/Common/DataTable.vue';
-import {forEach} from 'lodash';
-import Icon from '~/components/Common/Icon.vue';
-import PlayButton from "~/components/Common/PlayButton.vue";
+import InlinePlayer from "~/components/InlinePlayer.vue";
+import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
+import PlayButton from "~/components/Common/Audio/PlayButton.vue";
 import {useTranslate} from "~/vendor/gettext";
 import AlbumArt from "~/components/Common/AlbumArt.vue";
-import {IconDownload} from "~/components/Common/icons";
 import FullHeightCard from "~/components/Public/FullHeightCard.vue";
+import {useApiItemProvider} from "~/functions/dataTable/useApiItemProvider.ts";
+import {QueryKeys} from "~/entities/Queries.ts";
+import IconIcCloudDownload from "~icons/ic/baseline-cloud-download";
 
 interface OnDemandCustomField {
     display_key: string,
@@ -110,7 +112,7 @@ const fields: DataTableField[] = [
     }
 ];
 
-forEach(props.customFields.slice(), (field) => {
+for (const field of props.customFields.slice()) {
     fields.push({
         key: field.display_key,
         label: field.label,
@@ -119,5 +121,12 @@ forEach(props.customFields.slice(), (field) => {
         visible: false,
         formatter: (_value, _key, item) => item.media.custom_fields[field.key]
     });
-});
+}
+
+const listItemProvider = useApiItemProvider(
+    props.listUrl,
+    [
+        QueryKeys.PublicOnDemand
+    ]
+);
 </script>

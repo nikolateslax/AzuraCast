@@ -6,9 +6,9 @@ namespace App\Notification\Check;
 
 use App\Container\EnvironmentAwareTrait;
 use App\Entity\Api\Notification;
+use App\Enums\FlashLevels;
 use App\Enums\GlobalPermissions;
 use App\Event\GetNotifications;
-use App\Session\FlashLevels;
 
 final class ProfilerAdvisorCheck
 {
@@ -30,34 +30,37 @@ final class ProfilerAdvisorCheck
             return;
         }
 
-        $notification = new Notification();
-        $notification->title = __('The performance profiling extension is currently enabled on this installation.');
-        $notification->body = __(
-            'You can track the execution time and memory usage of any AzuraCast page or application ' .
-            'from the profiler page.',
+        $event->addNotification(
+            new Notification(
+                id: 'notification-dev-spx',
+                title: __('The performance profiling extension is currently enabled on this installation.'),
+                body: __(
+                    'You can track the execution time and memory usage of any AzuraCast page or application ' .
+                    'from the profiler page.',
+                ),
+                type: FlashLevels::Info,
+                actionLabel: __('Profiler Control Panel'),
+                actionUrl: '/?' . http_build_query(
+                    [
+                        'SPX_UI_URI' => '/',
+                        'SPX_KEY' => $this->environment->getProfilingExtensionHttpKey(),
+                    ]
+                ),
+            )
         );
-        $notification->type = FlashLevels::Info->value;
-
-        $notification->actionLabel = __('Profiler Control Panel');
-        $notification->actionUrl = '/?' . http_build_query(
-            [
-                    'SPX_UI_URI' => '/',
-                    'SPX_KEY' => $this->environment->getProfilingExtensionHttpKey(),
-                ]
-        );
-
-        $event->addNotification($notification);
 
         if ($this->environment->isProfilingExtensionAlwaysOn()) {
-            $notification = new Notification();
-            $notification->title = __('Performance profiling is currently enabled for all requests.');
-            $notification->body = __(
-                'This can have an adverse impact on system performance. ' .
-                'You should disable this when possible.'
+            $event->addNotification(
+                new Notification(
+                    id: 'notification-dev-spx-profiling',
+                    title: __('Performance profiling is currently enabled for all requests.'),
+                    body: __(
+                        'This can have an adverse impact on system performance. ' .
+                        'You should disable this when possible.'
+                    ),
+                    type: FlashLevels::Warning
+                )
             );
-            $notification->type = FlashLevels::Warning->value;
-
-            $event->addNotification($notification);
         }
     }
 }

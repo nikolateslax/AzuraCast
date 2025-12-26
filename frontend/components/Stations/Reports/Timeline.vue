@@ -12,7 +12,8 @@
                         :href="exportUrl"
                         target="_blank"
                     >
-                        <icon :icon="IconDownload" />
+                        <icon-ic-cloud-download/>
+
                         <span>
                             {{ $gettext('Download CSV') }}
                         </span>
@@ -22,7 +23,9 @@
                     <date-range-dropdown
                         v-model="dateRange"
                         :options="{
-                            enableTimePicker: true,
+                            timeConfig: {
+                                enableTimePicker: true,
+                            },
                             timezone: timezone
                         }"
                         class="btn-dark"
@@ -35,19 +38,19 @@
             paginated
             select-fields
             :fields="fields"
-            :api-url="apiUrl"
+            :provider="listItemProvider"
         >
             <template #cell(delta)="row">
                 <span class="typography-subheading">
                     <template v-if="row.item.delta_total > 0">
                         <span class="text-success">
-                            <icon :icon="IconTrendingUp" />
+                            <icon-ic-trending-up/>
                             {{ abs(row.item.delta_total) }}
                         </span>
                     </template>
                     <template v-else-if="row.item.delta_total < 0">
                         <span class="text-danger">
-                            <icon :icon="IconTrendingDown" />
+                            <icon-ic-trending-down/>
                             {{ abs(row.item.delta_total) }}
                         </span>
                     </template>
@@ -88,21 +91,28 @@
 </template>
 
 <script setup lang="ts">
-import Icon from "~/components/Common/Icon.vue";
 import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
 import DateRangeDropdown from "~/components/Common/DateRangeDropdown.vue";
 import {computed, nextTick, ref, useTemplateRef, watch} from "vue";
 import {useTranslate} from "~/vendor/gettext";
-import {getStationApiUrl} from "~/router";
-import {IconDownload, IconTrendingDown, IconTrendingUp} from "~/components/Common/icons";
 import useHasDatatable from "~/functions/useHasDatatable.ts";
 import useStationDateTimeFormatter from "~/functions/useStationDateTimeFormatter.ts";
 import {useLuxon} from "~/vendor/luxon.ts";
-import {useAzuraCastStation} from "~/vendor/azuracast.ts";
+import {useApiItemProvider} from "~/functions/dataTable/useApiItemProvider.ts";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {toRefs} from "@vueuse/core";
+import IconIcCloudDownload from "~icons/ic/baseline-cloud-download";
+import IconIcTrendingDown from "~icons/ic/baseline-trending-down";
+import IconIcTrendingUp from "~icons/ic/baseline-trending-up";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
+const {getStationApiUrl} = useApiRouter();
 const baseApiUrl = getStationApiUrl('/history');
 
-const {timezone} = useAzuraCastStation();
+const stationData = useStationData();
+const {timezone} = toRefs(stationData);
+
 const {DateTime} = useLuxon();
 const {
     now,
@@ -175,8 +185,16 @@ const apiUrl = computed(() => {
     const apiUrl = new URL(baseApiUrl.value, document.location.href);
 
     const apiUrlParams = apiUrl.searchParams;
-    apiUrlParams.set('start', DateTime.fromJSDate(dateRange.value.startDate).toISO());
-    apiUrlParams.set('end', DateTime.fromJSDate(dateRange.value.endDate).toISO());
+
+    const startDate = DateTime.fromJSDate(dateRange.value.startDate);
+    if (startDate.isValid) {
+        apiUrlParams.set('start', startDate.toISO());
+    }
+
+    const endDate = DateTime.fromJSDate(dateRange.value.endDate);
+    if (endDate.isValid) {
+        apiUrlParams.set('end', endDate.toISO());
+    }
 
     return apiUrl.toString();
 });
@@ -190,7 +208,16 @@ const exportUrl = computed(() => {
     return exportUrl.toString();
 });
 
-const abs = (val) => {
+const listItemProvider = useApiItemProvider(
+    apiUrl,
+    queryKeyWithStation([
+        QueryKeys.StationReports,
+        'timeline',
+        dateRange
+    ])
+);
+
+const abs = (val: number) => {
     return Math.abs(val);
 };
 

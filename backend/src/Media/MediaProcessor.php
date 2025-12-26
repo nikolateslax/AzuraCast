@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Media;
 
+use App\Cache\MediaListCache;
 use App\Container\EntityManagerAwareTrait;
 use App\Container\LoggerAwareTrait;
 use App\Entity\Repository\StationMediaRepository;
@@ -25,7 +26,8 @@ final class MediaProcessor
     public function __construct(
         private readonly StationMediaRepository $mediaRepo,
         private readonly UnprocessableMediaRepository $unprocessableMediaRepo,
-        private readonly StorageLocationRepository $storageLocationRepo
+        private readonly StorageLocationRepository $storageLocationRepo,
+        private readonly MediaListCache $mediaListCache
     ) {
     }
 
@@ -79,7 +81,7 @@ final class MediaProcessor
 
                 $this->mediaRepo->loadFromFile($record, $localPath, $fs);
 
-                $record->setMtime(time());
+                $record->mtime = time();
                 $this->em->persist($record);
                 $this->em->flush();
 
@@ -111,6 +113,7 @@ final class MediaProcessor
             throw $e;
         } finally {
             $fs->uploadAndDeleteOriginal($localPath, $path);
+            $this->mediaListCache->clearCache($storageLocation);
         }
     }
 
@@ -121,7 +124,7 @@ final class MediaProcessor
     ): ?StationMedia {
         if ($pathOrMedia instanceof StationMedia) {
             $record = $pathOrMedia;
-            $path = $pathOrMedia->getPath();
+            $path = $pathOrMedia->path;
         } else {
             $record = null;
             $path = $pathOrMedia;
@@ -166,6 +169,8 @@ final class MediaProcessor
             );
 
             throw $e;
+        } finally {
+            $this->mediaListCache->clearCache($storageLocation);
         }
     }
 
@@ -175,7 +180,7 @@ final class MediaProcessor
         bool $force = false
     ): bool {
         $fs = $this->storageLocationRepo->getAdapter($storageLocation)->getFilesystem();
-        $path = $media->getPath();
+        $path = $media->path;
 
         if (!$fs->fileExists($path)) {
             throw CannotProcessMediaException::forPath(
@@ -185,10 +190,10 @@ final class MediaProcessor
         }
 
         $fileModified = $fs->lastModified($path);
-        $mediaProcessedAt = $media->getMtime();
+        $mediaProcessedAt = $media->mtime;
 
         // No need to update if all of these conditions are true.
-        if (!$force && !StationMedia::needsReprocessing($fileModified, $mediaProcessedAt)) {
+        if (!$force && $fileModified <= $mediaProcessedAt) {
             return false;
         }
 
@@ -199,8 +204,10 @@ final class MediaProcessor
             }
         );
 
-        $media->setMtime(time() + 5);
+        $media->mtime = time() + 5;
         $this->em->persist($media);
+
+        $this->mediaListCache->clearCache($storageLocation);
 
         return true;
     }
@@ -230,5 +237,7 @@ final class MediaProcessor
             $destPath,
             AlbumArt::resize($contents)
         );
+
+        $this->mediaListCache->clearCache($storageLocation);
     }
 }

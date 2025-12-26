@@ -11,10 +11,39 @@ use App\Entity\Repository\StationPlaylistRepository;
 use App\Entity\StationMediaMetadata;
 use App\Http\Response;
 use App\Http\ServerRequest;
+use App\OpenApi;
 use League\Csv\Writer;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 
+#[
+    OA\Get(
+        path: '/station/{station_id}/files/bulk',
+        operationId: 'getStationBulkMediaDownload',
+        summary: 'Download a CSV containing details about all station media.',
+        tags: [OpenApi::TAG_STATIONS_MEDIA],
+        parameters: [
+            new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
+        ],
+        responses: [
+            new OpenApi\Response\SuccessWithDownload(
+                description: 'Success',
+                content: new OA\MediaType(
+                    mediaType: 'text/csv',
+                    schema: new OA\Schema(
+                        description: 'A CSV file containing bulk media details.',
+                        type: 'string',
+                        format: 'binary'
+                    )
+                )
+            ),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\NotFound(),
+            new OpenApi\Response\GenericError(),
+        ]
+    )
+]
 final class DownloadAction implements SingleActionInterface
 {
     use EntityManagerAwareTrait;
@@ -39,7 +68,7 @@ final class DownloadAction implements SingleActionInterface
 
         $playlistsById = [];
         foreach ($this->playlistRepo->getAllForStation($station) as $playlist) {
-            $playlistsById[$playlist->getIdRequired()] = $playlist->getName();
+            $playlistsById[$playlist->id] = $playlist->name;
         }
 
         $query = $this->em->createQuery(
@@ -50,9 +79,9 @@ final class DownloadAction implements SingleActionInterface
                 LEFT JOIN sm.custom_fields smcf
                 WHERE sm.storage_location = :storageLocation
             DQL
-        )->setParameter('storageLocation', $station->getMediaStorageLocation());
+        )->setParameter('storageLocation', $station->media_storage_location);
 
-        $filename = $station->getShortName() . '_all_media.csv';
+        $filename = $station->short_name . '_all_media.csv';
 
         if (!($tempFile = tmpfile())) {
             throw new RuntimeException('Could not create temp file.');
@@ -67,6 +96,8 @@ final class DownloadAction implements SingleActionInterface
          */
         $headerRow = [
             'id',
+            'unique_id',
+            'song_id',
             'path',
             'title',
             'artist',
@@ -105,7 +136,9 @@ final class DownloadAction implements SingleActionInterface
             }
 
             $bodyRow = [
+                $row['id'] ?? '',
                 $row['unique_id'] ?? '',
+                $row['song_id'] ?? '',
                 $row['path'] ?? '',
                 $row['title'] ?? '',
                 $row['artist'] ?? '',
@@ -113,7 +146,7 @@ final class DownloadAction implements SingleActionInterface
                 $row['genre'] ?? '',
                 $row['lyrics'] ?? '',
                 $row['isrc'] ?? '',
-                implode(', ', $playlists),
+                implode('; ', $playlists),
                 $row['length'] ?? '0.0',
                 ...$extraMetadata,
             ];

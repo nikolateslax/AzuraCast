@@ -3,35 +3,43 @@
         id="leaflet-container"
         ref="$container"
     >
-        <slot
-            v-if="$map"
-            :map="$map"
-        />
+        <slot v-if="$map" :map="$map"/>
     </div>
 </template>
 
 <script setup lang="ts">
-import {onMounted, provide, ShallowRef, shallowRef, useTemplateRef, watch} from "vue";
-import {Control, Icon, Map, map, tileLayer} from 'leaflet';
-import useTheme from "~/functions/theme";
-import 'leaflet-fullscreen';
-import {useTranslate} from "~/vendor/gettext";
+import {onMounted, shallowRef, useTemplateRef, watch} from "vue";
+import {Control, Icon, Map, map, tileLayer} from "leaflet";
+import {useTheme} from "~/functions/theme.ts";
+import "leaflet-fullscreen";
+import {useTranslate} from "~/vendor/gettext.ts";
+import {storeToRefs} from "pinia";
+import markerIconUrl from "leaflet/dist/images/marker-icon.png";
+import markerIconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import markerShadowUrl from "leaflet/dist/images/marker-shadow.png";
+
+defineSlots<{
+    default: (props: {
+        map: Map
+    }) => any,
+}>();
 
 const $container = useTemplateRef('$container');
 
 const $map = shallowRef<Map | null>(null);
 
-provide<ShallowRef<Map | null>>('map', $map);
-
-const {currentTheme} = useTheme();
+const {currentTheme} = storeToRefs(useTheme());
 const {$gettext} = useTranslate();
 
 onMounted(() => {
-    Icon.Default.imagePath = '/static/img/leaflet/';
+    Icon.Default.prototype.options.iconUrl = markerIconUrl;
+    Icon.Default.prototype.options.iconRetinaUrl = markerIconRetinaUrl;
+    Icon.Default.prototype.options.shadowUrl = markerShadowUrl;
+    Icon.Default.imagePath = "";
 
     // Init map
     const mapObj = map(
-        $container.value
+        $container.value!
     );
     mapObj.setView([40, 0], 1);
 
@@ -68,8 +76,8 @@ onMounted(() => {
 </script>
 
 <style lang="scss">
-@import 'leaflet/dist/leaflet.css';
-@import 'leaflet-fullscreen/dist/leaflet.fullscreen.css';
+@import "leaflet/dist/leaflet.css";
+@import "leaflet-fullscreen/dist/leaflet.fullscreen.css";
 
 .leaflet-container {
     height: 300px;

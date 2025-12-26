@@ -2,7 +2,7 @@
     <canvas ref="$canvas">
         <slot>
             <chart-alt-values
-                v-if="alt.length > 0"
+                v-if="alt && alt.length > 0"
                 :alt="alt"
             />
         </slot>
@@ -38,7 +38,6 @@ useChart<'line'>(
     computed(() => ({
         type: 'line',
         options: {
-            aspectRatio: props.aspectRatio ?? 2,
             datasets: {
                 line: {
                     spanGaps: true,
@@ -50,7 +49,12 @@ useChart<'line'>(
                     // Container for pan options
                     pan: {
                         enabled: true,
-                        mode: 'x'
+                        mode: 'x',
+                    },
+                    limits: {
+                        x: {
+                            max: Number(DateTime.local({zone: props.tz}).toMillis()),
+                        }
                     }
                 }, 
                 tooltip: {
@@ -61,6 +65,10 @@ useChart<'line'>(
                             const title: string[] = [];
 
                             ctx.forEach((ctxRow) => {
+                                if (ctxRow.parsed.x === null) {
+                                    return;
+                                }
+
                                 title.push(
                                     DateTime.fromMillis(ctxRow.parsed.x).setZone(props.tz)?.toLocaleString(DateTime.DATE_SHORT)
                                 );
@@ -70,6 +78,10 @@ useChart<'line'>(
                         },
                         label: function (ctx) {
                             let label = ctx.dataset.label || '';
+                            if (ctx.parsed.y === null) {
+                                return label;
+                            }
+
                             if (label) {
                                 label += ': ';
                             }
@@ -85,7 +97,6 @@ useChart<'line'>(
                 x: {
                     type: 'time',
                     display: true,
-                    min: Number(DateTime.local({ zone: props.tz }).minus({ days: 30 }).toMillis()),
                     max: Number(DateTime.local({ zone: props.tz }).toMillis()),
                     adapters: {
                         date: {

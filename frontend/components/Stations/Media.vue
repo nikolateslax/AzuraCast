@@ -72,8 +72,7 @@
             paginated
             select-fields
             :fields="fields"
-            :api-url="listUrl"
-            :request-config="requestConfig"
+            :provider="listItemProvider"
             @row-selected="onRowSelected"
             @filtered="onFiltered"
         >
@@ -82,8 +81,11 @@
                     <div class="flex-shrink-0 pe-2">
                         <template v-if="item.type === FileTypes.Media">
                             <play-button
-                                :url="item.media.links.play"
                                 class="btn-lg"
+                                :stream="{
+                                    title: item.text,
+                                    url: item.media!.links.play
+                                }"
                             />
                         </template>
                         <template v-else>
@@ -91,19 +93,19 @@
                                 v-if="item.type === FileTypes.Directory"
                                 class="file-icon"
                             >
-                                <icon :icon="IconFolder" />
+                                <icon-ic-folder/>
                             </span>
                             <span
                                 v-else-if="item.type === FileTypes.CoverArt"
                                 class="file-icon"
                             >
-                                <icon :icon="IconImage" />
+                                <icon-ic-image/>
                             </span>
                             <span
                                 v-else
                                 class="file-icon"
                             >
-                                <icon :icon="IconFile" />
+                                <icon-ic-insert-drive-file/>
                             </span>
                         </template>
                     </div>
@@ -114,7 +116,7 @@
                                 class="name"
                                 href="#"
                                 :title="item.text"
-                                @click.prevent="changeDirectory(item.path)"
+                                @click.prevent="changeDirectory(item.path!)"
                             >
                                 {{ item.path_short }}
                             </a>
@@ -122,6 +124,7 @@
                         <template v-else-if="item.type === FileTypes.Media">
                             <a
                                 class="name"
+                                v-if="item.media"
                                 :href="item.media.links.play"
                                 target="_blank"
                                 :title="item.text"
@@ -169,34 +172,16 @@
                 </template>
             </template>
             <template #cell(playlists)="{ item }">
-                <template v-if="item.media?.playlists?.length > 0">
-                    <template
-                        v-for="(playlist, index) in item.media.playlists"
-                        :key="playlist.id"
-                    >
-                        <a
-                            class="btn-search"
-                            href="#"
-                            :title="$gettext('View tracks in playlist')"
-                            @click.prevent="filter('playlist:'+playlist.short_name)"
-                        >{{ playlist.name }}</a>
-                        <span v-if="index+1 < item.media.playlists.length">, </span>
-                    </template>
-                </template>
-                <template v-else-if="item.dir?.playlists?.length > 0">
-                    <template
-                        v-for="(playlist, index) in item.dir.playlists"
-                        :key="playlist.id"
-                    >
-                        <a
-                            class="btn-search"
-                            href="#"
-                            :title="$gettext('View tracks in playlist')"
-                            @click.prevent="filter('playlist:'+playlist.short_name)"
-                        >{{ playlist.name }}</a>
-                        <span v-if="index+1 < item.dir.playlists.length">, </span>
-                    </template>
-                </template>
+                <MediaPlaylists
+                    v-if="item.type === FileTypes.Media"
+                    :playlists="item.media?.playlists as ApiStationMediaPlaylist[]"
+                    @filter="filter"
+                />
+                <MediaPlaylists
+                    v-else-if="item.type === FileTypes.Directory"
+                    :playlists="item.dir?.playlists as ApiStationMediaPlaylist[]"
+                    @filter="filter"
+                />
                 <template v-else>
                     &nbsp;
                 </template>
@@ -255,71 +240,115 @@
 </template>
 
 <script setup lang="ts">
-import DataTable, {DataTableField} from '~/components/Common/DataTable.vue';
-import MediaToolbar from './Media/MediaToolbar.vue';
-import Breadcrumb from './Media/Breadcrumb.vue';
-import FileUpload from './Media/FileUpload.vue';
-import NewDirectoryModal from './Media/NewDirectoryModal.vue';
-import MoveFilesModal from './Media/MoveFilesModal.vue';
-import RenameModal from './Media/RenameModal.vue';
-import EditModal from './Media/EditModal.vue';
+import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
+import MediaToolbar from "~/components/Stations/Media/MediaToolbar.vue";
+import Breadcrumb from "~/components/Stations/Media/Breadcrumb.vue";
+import FileUpload from "~/components/Stations/Media/FileUpload.vue";
+import NewDirectoryModal from "~/components/Stations/Media/NewDirectoryModal.vue";
+import MoveFilesModal from "~/components/Stations/Media/MoveFilesModal.vue";
+import RenameModal from "~/components/Stations/Media/RenameModal.vue";
+import EditModal from "~/components/Stations/Media/EditModal.vue";
 import StationsCommonQuota from "~/components/Stations/Common/Quota.vue";
-import Icon from '~/components/Common/Icon.vue';
-import AlbumArt from '~/components/Common/AlbumArt.vue';
-import PlayButton from "~/components/Common/PlayButton.vue";
+import AlbumArt from "~/components/Common/AlbumArt.vue";
+import PlayButton from "~/components/Common/Audio/PlayButton.vue";
 import {useTranslate} from "~/vendor/gettext";
 import {computed, ref, useTemplateRef, watch} from "vue";
-import {forEach, map, partition} from "lodash";
-import formatFileSize from "../../functions/formatFileSize";
+import {forEach, map, partition} from "es-toolkit/compat";
+import formatFileSize from "~/functions/formatFileSize";
 import InfoCard from "~/components/Common/InfoCard.vue";
-import {getStationApiUrl} from "~/router";
 import {useRoute, useRouter} from "vue-router";
-import {IconFile, IconFolder, IconImage} from "~/components/Common/icons";
 import useStationDateTimeFormatter from "~/functions/useStationDateTimeFormatter.ts";
-import {ApiFileList, CustomField, FileTypes} from "~/entities/ApiInterfaces.ts";
+import {
+    ApiStationMediaPlaylist,
+    ApiStationsVueFilesProps,
+    CustomField,
+    FileTypes,
+    StorageLocationTypes
+} from "~/entities/ApiInterfaces.ts";
+import {useApiItemProvider} from "~/functions/dataTable/useApiItemProvider.ts";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import MediaPlaylists from "~/components/Stations/Media/MediaPlaylists.vue";
+import {useStationData} from "~/functions/useStationQuery.ts";
+import {FileListRequired, StationsVueFilesPropsRequired} from "~/entities/StationMedia.ts";
+import IconIcInsertDriveFile from "~icons/ic/baseline-insert-drive-file";
+import IconIcFolder from "~icons/ic/baseline-folder";
+import IconIcImage from "~icons/ic/baseline-image";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
-export interface MediaSelectedItems {
-    all: ApiFileList[],
+const props = defineProps<StationsVueFilesPropsRequired>();
+
+export type MediaInitialPlaylist = ApiStationsVueFilesProps['initialPlaylists'][number];
+
+export type MediaRow = FileListRequired;
+
+export type MediaSelectedItems = {
+    all: MediaRow[],
     files: string[],
     directories: string[]
 }
 
-export interface MediaInitialPlaylist {
-    id: number,
-    name: string
-}
+const stationData = useStationData();
+const showSftp = computed(() => stationData.value.features.sftp ?? false);
 
-const props = withDefaults(
-    defineProps<{
-        initialPlaylists?: MediaInitialPlaylist[],
-        customFields?: CustomField[],
-        validMimeTypes?: string[],
-        showSftp?: boolean,
-        supportsImmediateQueue?: boolean,
-    }>(),
-    {
-        initialPlaylists: () => [],
-        customFields: () => [],
-        validMimeTypes: () => [],
-        showSftp: true,
-        supportsImmediateQueue: true
-    }
-);
-
+const {getStationApiUrl} = useApiRouter();
 const listUrl = getStationApiUrl('/files/list');
 const batchUrl = getStationApiUrl('/files/batch');
 const uploadUrl = getStationApiUrl('/files/upload');
 const listDirectoriesUrl = getStationApiUrl('/files/directories');
 const mkdirUrl = getStationApiUrl('/files/mkdir');
 const renameUrl = getStationApiUrl('/files/rename');
-const quotaUrl = getStationApiUrl('/quota/station_media');
+const quotaUrl = getStationApiUrl(`/quota/${StorageLocationTypes.StationMedia}`);
+
+const currentDirectory = ref('');
+
+const isFilterString = (str: string) =>
+    (str.substring(0, 9) === 'playlist:' || str.substring(0, 8) === 'special:');
+
+const router = useRouter();
+const route = useRoute();
+
+watch(
+    () => route.params,
+    async (newParams) => {
+        let path = newParams.path ?? '';
+        if (Array.isArray(path)) {
+            path = path.join('');
+        }
+
+        if (isFilterString(path)) {
+            await router.push({
+                name: 'stations:files:index',
+            });
+            filter(path);
+        } else {
+            currentDirectory.value = path;
+        }
+    },
+    {
+        immediate: true
+    }
+);
 
 const {$gettext} = useTranslate();
 
 const {formatTimestampAsDateTime} = useStationDateTimeFormatter();
 
-const fields = computed<DataTableField<ApiFileList>[]>(() => {
-    const fields: DataTableField<ApiFileList>[] = [
+const listItemProvider = useApiItemProvider<MediaRow>(
+    listUrl,
+    queryKeyWithStation(
+        [QueryKeys.StationMedia, 'files', currentDirectory]
+    ),
+    {
+        staleTime: 2 * 60 * 1000
+    },
+    (config) => {
+        config.params.currentDirectory = currentDirectory.value;
+        return config;
+    }
+);
+
+const fields = computed<DataTableField<MediaRow>[]>(() => {
+    const fields: DataTableField<MediaRow>[] = [
         {key: 'path', isRowHeader: true, label: $gettext('Name'), sortable: true},
         {key: 'media.title', label: $gettext('Title'), sortable: true, selectable: true, visible: false},
         {
@@ -384,16 +413,16 @@ const fields = computed<DataTableField<ApiFileList>[]>(() => {
     return fields;
 });
 
-const playlists = ref<MediaInitialPlaylist[]>(props.initialPlaylists);
+const playlists = ref<MediaInitialPlaylist[]>(props.initialPlaylists.slice());
 const selectedItems = ref<MediaSelectedItems>({
     all: [],
     files: [],
     directories: []
 });
-const currentDirectory = ref('');
+
 const searchPhrase = ref('');
 
-const onRowSelected = (items: ApiFileList[]) => {
+const onRowSelected = (items: MediaRow[]) => {
     const splitItems = partition(items, (row) => row.type === FileTypes.Directory);
 
     selectedItems.value = {
@@ -409,28 +438,29 @@ const onTriggerNavigate = () => {
     $dataTable.value?.navigate();
 };
 
-const filter = (newFilter) => {
+const filter = (newFilter: string) => {
     $dataTable.value?.setFilter(newFilter);
 };
 
 const $quota = useTemplateRef('$quota');
 
 const onTriggerRelist = () => {
+    void listItemProvider.refresh(false);
+
     $quota.value?.update();
-    $dataTable.value?.relist();
 };
 
 const onAddPlaylist = (row: MediaInitialPlaylist) => {
     playlists.value.push(row);
 };
 
-const onFiltered = (newFilter) => {
+const onFiltered = (newFilter: string) => {
     searchPhrase.value = newFilter;
 };
 
 const $renameModal = useTemplateRef('$renameModal');
 
-const rename = (path) => {
+const rename = (path: string) => {
     $renameModal.value?.open(path);
 };
 
@@ -452,46 +482,14 @@ const moveFiles = () => {
     $moveFilesModal.value?.open();
 }
 
-const requestConfig = (config) => {
-    config.params.currentDirectory = currentDirectory.value;
-    return config;
-};
-
-const isFilterString = (str) =>
-    (str.substring(0, 9) === 'playlist:' || str.substring(0, 8) === 'special:');
-
-const router = useRouter();
-const route = useRoute();
-
-const changeDirectory = (newDir) => {
+const changeDirectory = (newDir: string) => {
     void router.push({
         name: 'stations:files:index',
         params: {
             path: newDir
         }
     });
+
+    onTriggerNavigate();
 };
-
-watch(
-    () => route.params,
-    async (newParams) => {
-        let path = newParams.path ?? '';
-        if (Array.isArray(path)) {
-            path = path.join('');
-        }
-
-        if (isFilterString(path)) {
-            await router.push({
-                name: 'stations:files:index',
-            });
-            filter(path);
-        } else {
-            currentDirectory.value = path;
-            onTriggerNavigate();
-        }
-    },
-    {
-        immediate: true
-    }
-);
 </script>

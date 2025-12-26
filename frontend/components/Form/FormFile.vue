@@ -14,10 +14,13 @@ const emit = defineEmits<{
 
 const fileModel = defineModel<File>();
 
-const uploaded = (event) => {
-    const file = event.target.files[0];
+const uploaded = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    if (target.files !== null && target.files.length > 0) {
+        const file = target.files[0];
 
-    fileModel.value = file;
-    emit('uploaded', file);
+        fileModel.value = file;
+        emit('uploaded', file);
+    }
 };
 </script>

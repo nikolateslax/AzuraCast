@@ -17,7 +17,9 @@ use App\Webhook\Connector\RadioDe;
 use App\Webhook\Connector\RadioReg;
 use App\Webhook\Connector\Telegram;
 use App\Webhook\Connector\TuneIn;
+use OpenApi\Attributes as OA;
 
+#[OA\Schema(type: 'string')]
 enum WebhookTypes: string
 {
     case Generic = 'generic';

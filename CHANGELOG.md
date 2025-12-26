@@ -5,13 +5,218 @@ release channel, you can take advantage of these new features and fixes.
 
 ## New Features/Changes
 
+## Code Quality/Technical Changes
+
+## Bug Fixes
+
+- Fixed a bug where UTC offsets that weren't a full hour (i.e. +6:30 UTC) were not displayed correctly in dropdowns.
+
+---
+
+# AzuraCast 0.23.2 (Dec 11, 2025)
+
+## New Features/Changes
+
+- The embeddable player widget builder has been greatly expanded and now supports custom colors, several preset layouts,
+  enabling or disabling components in the player, and saving/loading custom templates.
+
+- Administrators can now create login tokens for any account that function as "magic links" that complete the
+  authentication process in one step, as opposed to only being able to create password reset links. Both types of links
+  can be created from the Administration panel.
+
+## Code Quality/Technical Changes
+
+- If already installed, instances of Rocket Streaming Audio Server (RSAS) or Shoutcast can now be uninstalled from the
+  web interface.
+
+- Notifications on the dashboard homepage have unique IDs, meaning they can be individually targeted by CSS for styling
+  or other customization purposes.
+
+## Bug Fixes
+
+- Several bugs causing the Media Manager's cache to become out-of-date from the actual contents of the filesystem have
+  been resolved, so navigating around the station filesystem should accurately represent its contents in many more
+  cases.
+
+- Fixed a bug where live streamers/DJs with a disconnect delay would never be reactivated.
+
+- Fixed a bug preventing writing metadata changes to certain file formats.
+
+- Fixed a bug affecting uploading of custom branding assets.
+
+- Fixed a bug causing Icecast to have the incorrect amount of maximum listeners.
+
+- A low-security vulnerability affecting an internal API endpoint inside AzuraCast has been found and fixed in this
+  version. Updating is strongly recommended for users using SFTP to manage their local media.
+
+---
+
+# AzuraCast 0.23.1 (Oct 1, 2025)
+
+A minor bug fix addressing some pressing issues not fixed in 0.23.0.
+
+## Code Quality/Technical Changes
+
+- Stations that do not have the "Public Pages" feature enabled will no longer be visible to unauthenticated users via
+  any of the public-facing API endpoints. If you need to use features that are only available to public stations (i.e.
+  song requests), then the station should be made public.
+
+## Bug Fixes
+
+- Found and fixed a bug that caused users to see menu items that they didn't have permissions to manage. This didn't
+  allow them to modify the items in question (as this permission is managed server-side), just to see them on the menu.
+
+---
+
+# AzuraCast 0.23.0 (Sep 28, 2025)
+
+## New Features/Changes
+
+- **Share Encoders Between Streams**: You can now optionally enable an exciting new feature made possible by
+  Liquidsoap's FFmpeg integration: shared stream encoders. If enabled, if you have multiple streams that have the exact
+  same bitrate and format (i.e. 128kbps AAC for both an Icecast mount and HLS), both will share a single encoder. For
+  larger installations, this can dramatically improve CPU consumption. This feature is disabled by default to match the
+  experience of earlier versions; if you test it and encounter issues, try disabling it again. Enable the "Share
+  Encoders Between Streams" setting on the "AutoDJ" tab of your station's profile edit form.
+
+- **Liquidsoap 2.4.0**: Liquidsoap is now updated to version 2.4.0. This includes a number of bug fixes for critical
+  issues, but also includes some breaking changes. Most of these changes will appear in the logs as warnings when
+  starting up a station with custom Liquidsoap code. If you use custom Liquidsoap code, you should evaluate these
+  warnings and make changes as needed.
+
+- Playlists assigned to a folder should now be more intuitive; if a track is in a playlist because a parent folder is,
+  the playlist will have a folder icon next to it, and hovering over it will indicate which folder it was set from.
+  Clearing and setting that playlist directly on the media won't work (as it would just get reassigned later).
+
+- Playlists can now have a description associated with them.
+
+- Entire podcasts can now be marked as "Explicit".
+
+## Code Quality/Technical Changes
+
+- Our Docker image is now built on Debian Trixie (13), the newly released stable version of the Debian OS.
+
+- If a user submits a request too soon after their last one, they will be informed of how many minutes to wait.
+
+## Bug Fixes
+
+- We have identified a bug that is causing the initial metadata push from live DJs to not transmit successfully. We have
+  temporarily disabled a function in our own code to resolve the issue, and will continue working with Liquidsoap to
+  resolve the issue fully.
+
+- A bug preventing Matomo analytics from registering correctly has been fixed.
+
+- Once-per-X-minutes playlists are again correctly written to Liquidsoap.
+
+- Fixed some forms not saving because of null values.
+
+---
+
+# AzuraCast 0.22.1 (Aug 29, 2025)
+
+This release backports several important bug fixes from our Rolling Release onto the stable channel.
+
+## Code Quality/Technical Changes
+
+- The hourly analytics process (that writes aggregate data used for charts, etc.) has been rewritten to be significantly
+  optimized for larger installations. This should keep the analytics task from overwhelming installations as easily.
+
+## Bug Fixes
+
+- A bug causing the update checker to fail and retry too frequently has been fixed.
+
+- Several issues caused by having "Plugin Mode" enabled have been resolved.
+
+- Fixed a bug preventing "Max Bitrate/Streams" settings on the Station form from saving correctly.
+
+- Making changes to frontend/backend station configuration will now properly trigger a "needs restart" flag.
+
+---
+
+# AzuraCast 0.22.0 (Aug 7, 2025)
+
+## New Features/Changes
+
+- Liquidsoap is updated to version 2.3.2, including a number of bug fixes.
+
+- You can now specify the message color in Discord webhooks.
+
+- The Playlist edit modal's "Advanced" tab now has a new checkbox: "Prioritize over listener requests". If checked, the
+  playlist will always play at a higher priority than listener requests. Normally, listener requests pre-empt the
+  playback of normal playlists.
+
+- The "album" property for `SongInterface`-type items (station timelines, queues, media, etc.) is now supported as a
+  first-class property for all tracks.
+
+- Media management permissions have been split into "manage station media" and "delete station media", allowing you to
+  assign permissions to users to add media without being able to remove it. If migrating from a previous version, users
+  who have the "manage" permission will automatically receive the "delete" permission; when assigning new permissions,
+  this new permission will need to be manually assigned.
+
+- Podcasts can now take advantage of the [Open Podcast Prefix Project (OP3)](https://op3.dev/) free and open-source
+  podcast analytics service directly from within AzuraCast. Enable OP3 support on the "Branding" tab of the podcast, and
+  all episodes will have their download URLs prefixed by the OP3 analytics URL, which will let you track your audience
+  details via the OP3 platform.
+
+- You can now export your station's Liquidsoap configuration (including any custom configuration sections) to an archive
+  file; this archive file contains all of AzuraCast's code and can also be used for diagnosing Liquidsoap errors. You
+  can re-import this file later to apply any custom configuration within the file to the station.
+
+- You can now provide a custom value for the number of days of station history to keep and the number of history items
+  to show on each individual station API response.
+
+## Code Quality/Technical Changes
+
+- We have removed the "Hide Advanced Features" setting from the system settings panel. Often, this setting was disabled
+  by a single user, causing functionality to be hidden from other users, who thought the functionality was completely
+  removed or there was a bug. The "Advanced" label remains on any functionality you shouldn't modify without careful
+  consideration.
+
+- Because we now provide our HTTPS certificate to the broadcasting frontends (Icecast/Shoutcast) directly, we will no
+  longer act as though the "Use Web Proxy" setting is always enabled for HTTPS connections. If the proxy is desired or
+  needed, you can always enable the setting from System Settings.
+
+- If you use an externally-mounted HTTPS certificate (i.e. manage LetsEncrypt yourself), you can now trigger a reload of
+  the internal web services (nginx and Icecast) by running `./docker.sh cli acme:reload`.
+
+- We have switched our internal Redis implementation to Valkey, as it is more heavily supported and also has an open
+  license we can continue to use into the future without issues.
+
+- Our Vue frontend now uses TanStack Query to populate data; this allows for smarter request handling, better pagination
+  performance, and other minor improvements to user experience.
+
+- The API connection between AzuraCast and Liquidsoap now uses Liquidsoap's HTTP API instead of telnet via sockets,
+  removing a class of errors that users were encountering relating to socket permissions.
+
+- The CLI command `azuracast:sync:task` and API endpoint `/admin/debug/sync/{task}`, both used to manually invoke
+  synchronized (cron) tasks as needed, no longer require the fully-qualified namespaced name of a task to run. You can
+  now specify a much shorter name in many formats (i.e. "check-updates", "check_updates") to run the same tasks.
+
+## Bug Fixes
+
+- We found and fixed several places in the application where playlists could be changed but the changes weren't written
+  to the filesystem. The playlist file on the station filesystem should much more accurately reflect current playlist
+  contents.
+
+- An issue writing extra metadata to Ogg Vorbis files has been fixed.
+
+- Custom station CSS and JavaScript will now apply to the public Requests pages.
+
+- Fixed an issue preventing station deletion if the station files were mounted to an external storage device.
+
+---
+
+# AzuraCast 0.21.0 (Mar 12, 2025)
+
+## New Features/Changes
+
 - **Support for Rocket Streaming Audio Server (RSAS)**: RSAS is a popular, closed-source drop-in replacement for
   Icecast, and AzuraCast now supports uploading the RSAS binary and license key, and selecting RSAS as a broadcasting
   frontend, directly within the web UI.
 
-- **Update to Liquidsoap 2.3.0**: We have worked closely with the maintainers of Liquidsoap and members of the radio
+- **Update to Liquidsoap 2.3.1**: We have worked closely with the maintainers of Liquidsoap and members of the radio
   community to test and refine the next big version of Liquidsoap, our underlying broadcast manager, and they have
-  released 2.3.0 as a stable release. We're planning on using this version moving forward, first in Rolling Release for
+  released 2.3.1 as a stable release. We're planning on using this version moving forward, first in Rolling Release for
   testing and then in Stable builds. Some custom code may require modification from previous versions, but a majority of
   code should work unmodified.
 
@@ -21,6 +226,18 @@ release channel, you can take advantage of these new features and fixes.
   Day" view.
 
 ## Code Quality/Technical Changes
+
+- Schema/API Changes: We have greatly expanded the documentation of our over 250 API endpoints and now have over 90%
+  full documentation of API request bodies and responses. In the process of documenting our API endpoints, we have found
+  several endpoints with similar responses or unclear response types, and fixed these issues. If you built applications
+  that depended on undocumented API endpoints, you should review the updated API documentation (visible at `/api` on
+  any installation) to ensure no changes are necessary in your code.
+
+- Schema/API Change: Several date/time fields have been made more precise to allow for storing higher-precision
+  timestamps. Tables affected include `AuditLog`, `Listener`, `Relay`, `SongHistory`, `StationQueue`, `StationRequest`
+  and `StationStreamerBroadcast`. Public-facing APIs still use UNIX timestamps in seconds for backward compatibility,
+  but several internal APIs have updated to use the ISO 8601 datetime format. When submitting changes to these entities,
+  you can still submit UNIX timestamps and they will be accepted as well as the ISO 8601 format.
 
 - API Change: The Permissions API endpoint will now return station permissions as an array (i.e.
   `station: [{id: 1, permissions: ["foo"]]`) instead of an object (i.e. `station: { 1: ["foo"] }`). Please update any

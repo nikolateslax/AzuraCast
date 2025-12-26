@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App;
 
-use App\Assets\AssetTypes;
+use App\Assets\AlbumArtCustomAsset;
+use App\Assets\BackgroundCustomAsset;
 use App\Assets\BrowserIconCustomAsset;
 use App\Container\EnvironmentAwareTrait;
 use App\Entity\Repository\SettingsRepository;
@@ -14,13 +15,14 @@ use App\Enums\SupportedLocales;
 use App\Enums\SupportedThemes;
 use App\Http\ServerRequest;
 use App\Traits\RequestAwareTrait;
+use Psr\Http\Message\UriInterface;
 
 final class Customization
 {
     use RequestAwareTrait;
     use EnvironmentAwareTrait;
 
-    private Settings $settings;
+    private readonly Settings $settings;
 
     private SupportedLocales $locale;
 
@@ -29,11 +31,14 @@ final class Customization
     private string $instanceName;
 
     public function __construct(
-        SettingsRepository $settingsRepo
+        SettingsRepository $settingsRepo,
+        private readonly AlbumArtCustomAsset $albumArtCustomAsset,
+        private readonly BrowserIconCustomAsset $browserIconCustomAsset,
+        private readonly BackgroundCustomAsset $backgroundCustomAsset,
     ) {
         $this->settings = $settingsRepo->readSettings();
-        $this->instanceName = $this->settings->getInstanceName() ?? '';
-        $this->publicTheme = $this->settings->getPublicTheme();
+        $this->instanceName = $this->settings->instance_name ?? '';
+        $this->publicTheme = $this->settings->public_theme;
         $this->locale = SupportedLocales::default();
     }
 
@@ -84,11 +89,10 @@ final class Customization
      */
     public function getCustomPublicCss(): string
     {
-        $publicCss = $this->settings->getPublicCustomCss() ?? '';
+        $publicCss = $this->settings->public_custom_css ?? '';
 
-        $background = AssetTypes::Background->createObject($this->environment);
-        if ($background->isUploaded()) {
-            $backgroundUrl = $background->getUrl();
+        if ($this->backgroundCustomAsset->isUploaded()) {
+            $backgroundUrl = $this->backgroundCustomAsset->getUrl();
 
             $publicCss .= <<<CSS
             [data-bs-theme] body.page-minimal {
@@ -102,12 +106,10 @@ final class Customization
 
     public function getStationCustomPublicCss(Station $station): string
     {
-        $publicCss = $station->getBrandingConfig()->getPublicCustomCss() ?? '';
+        $publicCss = $station->branding_config->public_custom_css ?? '';
 
-        $background = AssetTypes::Background->createObject($this->environment, $station);
-
-        if ($background->isUploaded()) {
-            $backgroundUrl = $background->getUrl();
+        if ($this->backgroundCustomAsset->isUploaded($station)) {
+            $backgroundUrl = $this->backgroundCustomAsset->getUrl($station);
 
             $publicCss .= <<<CSS
             [data-bs-theme] body.page-minimal {
@@ -124,12 +126,12 @@ final class Customization
      */
     public function getCustomPublicJs(): string
     {
-        return $this->settings->getPublicCustomJs() ?? '';
+        return $this->settings->public_custom_js ?? '';
     }
 
     public function getStationCustomPublicJs(Station $station): string
     {
-        return $station->getBrandingConfig()->getPublicCustomJs() ?? '';
+        return $station->branding_config->public_custom_js ?? '';
     }
 
     /**
@@ -137,15 +139,32 @@ final class Customization
      */
     public function getCustomInternalCss(): string
     {
-        return $this->settings->getInternalCustomCss() ?? '';
+        return $this->settings->internal_custom_css ?? '';
     }
 
     public function getBrowserIconUrl(int $size = 256): string
     {
-        /** @var BrowserIconCustomAsset $browserIcon */
-        $browserIcon = AssetTypes::BrowserIcon->createObject($this->environment);
+        return $this->browserIconCustomAsset->getUrlForSize($size);
+    }
 
-        return $browserIcon->getUrlForSize($size);
+    /**
+     * Return the URL to use for songs with no specified album artwork, when artwork is displayed.
+     */
+    public function getDefaultAlbumArtUrl(?Station $station = null): UriInterface
+    {
+        if (null !== $station) {
+            if ($this->albumArtCustomAsset->isUploaded($station)) {
+                return $this->albumArtCustomAsset->getUri($station);
+            }
+
+            $stationCustomUri = $station->branding_config->getDefaultAlbumArtUrlAsUri();
+            if (null !== $stationCustomUri) {
+                return $stationCustomUri;
+            }
+        }
+
+        $customUrl = $this->settings->getDefaultAlbumArtUrlAsUri();
+        return $customUrl ?? $this->albumArtCustomAsset->getUri();
     }
 
     /**
@@ -153,7 +172,7 @@ final class Customization
      */
     public function hideAlbumArt(): bool
     {
-        return $this->settings->getHideAlbumArt();
+        return $this->settings->hide_album_art;
     }
 
     /**
@@ -183,16 +202,11 @@ final class Customization
      */
     public function hideProductName(): bool
     {
-        return $this->settings->getHideProductName();
-    }
-
-    public function enableAdvancedFeatures(): bool
-    {
-        return $this->settings->getEnableAdvancedFeatures();
+        return $this->settings->hide_product_name;
     }
 
     public function useStaticNowPlaying(): bool
     {
-        return $this->settings->getEnableStaticNowPlaying();
+        return $this->settings->enable_static_nowplaying;
     }
 }

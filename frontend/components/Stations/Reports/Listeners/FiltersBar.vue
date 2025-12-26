@@ -33,16 +33,16 @@
                     v-model="filters.type"
                     class="form-select form-select-sm"
                 >
-                    <option :value="ListenerTypeFilter.All">
+                    <option :value="ListenerTypeFilters.All">
                         {{ $gettext('All Types') }}
                     </option>
-                    <option :value="ListenerTypeFilter.Mobile">
+                    <option :value="ListenerTypeFilters.Mobile">
                         {{ $gettext('Mobile') }}
                     </option>
-                    <option :value="ListenerTypeFilter.Desktop">
+                    <option :value="ListenerTypeFilters.Desktop">
                         {{ $gettext('Desktop') }}
                     </option>
-                    <option :value="ListenerTypeFilter.Bot">
+                    <option :value="ListenerTypeFilters.Bot">
                         {{ $gettext('Bot/Crawler') }}
                     </option>
                 </select>
@@ -54,7 +54,7 @@
                 class="btn btn-sm btn-secondary"
                 @click="clearFilters"
             >
-                <icon :icon="IconClearAll" />
+                <icon-ic-clear-all/>
                 <span>
                     {{ $gettext('Clear Filters') }}
                 </span>
@@ -64,15 +64,14 @@
 </template>
 
 <script setup lang="ts">
-import {ListenerFilters, ListenerTypeFilter} from "./listenerFilters.ts";
-import {IconClearAll} from "~/components/Common/icons.ts";
-import Icon from "~/components/Common/Icon.vue";
+import {ListenerFilters, ListenerTypeFilters} from "~/components/Stations/Reports/Listeners/listenerFilters.ts";
+import IconIcClearAll from "~icons/ic/baseline-clear-all";
 
-const filters = defineModel<ListenerFilters>('filters');
+const filters = defineModel<ListenerFilters>('filters', {required: true});
 
 const clearFilters = () => {
     filters.value.minLength = null;
     filters.value.maxLength = null;
-    filters.value.type = ListenerTypeFilter.All;
+    filters.value.type = ListenerTypeFilters.All;
 }
 </script>

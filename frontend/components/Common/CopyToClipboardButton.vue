@@ -6,19 +6,17 @@
         :aria-label="$gettext('Copy to Clipboard')"
         @click.prevent="doCopy"
     >
-        <icon
-            class="sm"
-            :icon="IconCopy"
-        />
+        <icon-ic-copy/>
+
         <span v-if="!hideText">{{ copyText }}</span>
     </button>
 </template>
 
 <script setup lang="ts">
-import Icon from "~/components/Common/Icon.vue";
 import {refAutoReset, useClipboard} from "@vueuse/core";
 import {useTranslate} from "~/vendor/gettext";
-import {IconCopy} from "~/components/Common/icons";
+
+import IconIcCopy from "~icons/ic/baseline-content-copy";
 
 const props = withDefaults(
     defineProps<{

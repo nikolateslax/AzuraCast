@@ -15,10 +15,13 @@
                     </h2>
                 </div>
 
-                <log-list
-                    :url="logsUrl"
-                    @view="viewLog"
-                />
+                <loading :loading="isLoading" lazy>
+                    <log-list
+                        v-if="data"
+                        :logs="data"
+                        @view="viewLog"
+                    />
+                </loading>
             </section>
 
             <streaming-log-modal ref="$modal" />
@@ -62,7 +65,8 @@
                         href="https://github.com/AzuraCast/AzuraCast/issues/new/choose"
                         target="_blank"
                     >
-                        <icon :icon="IconSupport" />
+                        <icon-ic-support/>
+
                         <span>
                             {{ $gettext('Add New GitHub Issue') }}
                         </span>
@@ -74,18 +78,38 @@
 </template>
 
 <script setup lang="ts">
-import Icon from "~/components/Common/Icon.vue";
 import StreamingLogModal from "~/components/Common/StreamingLogModal.vue";
 import LogList from "~/components/Common/LogList.vue";
 import {useTemplateRef} from "vue";
-import {getStationApiUrl} from "~/router";
-import {IconSupport} from "~/components/Common/icons.ts";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import {useQuery} from "@tanstack/vue-query";
+import {ApiLogType} from "~/entities/ApiInterfaces.ts";
+import {useAxios} from "~/vendor/axios.ts";
+import Loading from "~/components/Common/Loading.vue";
+import IconIcSupport from "~icons/ic/baseline-support";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
+const {getStationApiUrl} = useApiRouter();
 const logsUrl = getStationApiUrl('/logs');
+
+const {axios} = useAxios();
+
+type ApiLogRow = Required<ApiLogType>
+
+const {data, isLoading} = useQuery<ApiLogRow[]>({
+    queryKey: queryKeyWithStation([
+        QueryKeys.StationLogs
+    ]),
+    queryFn: async ({signal}) => {
+        const {data} = await axios.get<ApiLogRow[]>(logsUrl.value, {signal});
+        return data;
+    },
+    placeholderData: () => []
+});
 
 const $modal = useTemplateRef('$modal');
 
-const viewLog = (url, isStreaming) => {
+const viewLog = (url: string, isStreaming: boolean) => {
     $modal.value?.show(url, isStreaming);
 };
 </script>

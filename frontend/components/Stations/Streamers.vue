@@ -13,7 +13,13 @@
                             </h2>
                         </div>
                         <div class="col-md-6 text-end">
-                            <time-zone />
+                            <loading :loading="propsLoading" lazy>
+                                <stations-common-quota
+                                    v-if="props && props.recordStreams"
+                                    :quota-url="quotaUrl"
+                                />
+                                <time-zone v-else/>
+                            </loading>
                         </div>
                     </div>
                 </template>
@@ -35,9 +41,8 @@
 
                                 <data-table
                                     id="station_streamers"
-                                    ref="$dataTable"
                                     :fields="fields"
-                                    :api-url="listUrl"
+                                    :provider="listItemProvider"
                                 >
                                     <template #cell(art)="row">
                                         <album-art :src="row.item.art" />
@@ -65,7 +70,7 @@
                                             <button
                                                 type="button"
                                                 class="btn btn-secondary"
-                                                @click="doShowBroadcasts(row.item.links.broadcasts, row.item.links.broadcasts_batch)"
+                                                @click="doShowBroadcasts(row.item.id, row.item.links.broadcasts, row.item.links.broadcasts_batch)"
                                             >
                                                 {{ $gettext('Broadcasts') }}
                                             </button>
@@ -91,14 +96,16 @@
             </card-page>
         </div>
         <div class="col-md-4">
-            <connection-info :connection-info="connectionInfo" />
+            <loading :loading="propsLoading" lazy>
+                <connection-info v-if="props" v-bind="props"/>
+            </loading>
         </div>
 
         <edit-modal
             ref="$editModal"
             :create-url="listUrl"
             :new-art-url="newArtUrl"
-            @relist="relist"
+            @relist="() => relist()"
         />
 
         <broadcasts-modal ref="$broadcastsModal" />
@@ -106,33 +113,54 @@
 </template>
 
 <script setup lang="ts">
-import DataTable, {DataTableField} from '~/components/Common/DataTable.vue';
-import EditModal from './Streamers/EditModal.vue';
-import BroadcastsModal from './Streamers/BroadcastsModal.vue';
-import ConnectionInfo from "./Streamers/ConnectionInfo.vue";
+import DataTable, {DataTableField} from "~/components/Common/DataTable.vue";
+import EditModal from "~/components/Stations/Streamers/EditModal.vue";
+import BroadcastsModal from "~/components/Stations/Streamers/BroadcastsModal.vue";
+import ConnectionInfo from "~/components/Stations/Streamers/ConnectionInfo.vue";
 import AlbumArt from "~/components/Common/AlbumArt.vue";
 import {useTranslate} from "~/vendor/gettext";
 import {useTemplateRef} from "vue";
-import useHasDatatable from "~/functions/useHasDatatable";
 import useHasEditModal from "~/functions/useHasEditModal";
 import useConfirmAndDelete from "~/functions/useConfirmAndDelete";
 import CardPage from "~/components/Common/CardPage.vue";
-import {getStationApiUrl} from "~/router";
 import Tabs from "~/components/Common/Tabs.vue";
 import Tab from "~/components/Common/Tab.vue";
 import AddButton from "~/components/Common/AddButton.vue";
 import TimeZone from "~/components/Stations/Common/TimeZone.vue";
 import ScheduleViewTab from "~/components/Stations/Common/ScheduleViewTab.vue";
 import {EventImpl} from "@fullcalendar/core/internal";
-import {StreamerConnectionInfo} from "~/components/Stations/Streamers/ConnectionInfo.vue";
+import {useApiItemProvider} from "~/functions/dataTable/useApiItemProvider.ts";
+import {QueryKeys, queryKeyWithStation} from "~/entities/Queries.ts";
+import StationsCommonQuota from "~/components/Stations/Common/Quota.vue";
+import {ApiStationsVueStreamersProps, StorageLocationTypes} from "~/entities/ApiInterfaces.ts";
+import {useAxios} from "~/vendor/axios.ts";
+import {useQuery} from "@tanstack/vue-query";
+import Loading from "~/components/Common/Loading.vue";
+import {useApiRouter} from "~/functions/useApiRouter.ts";
 
-defineProps<{
-    connectionInfo: StreamerConnectionInfo,
-}>();
+const {getStationApiUrl} = useApiRouter();
 
+const propsUrl = getStationApiUrl('/vue/streamers');
 const listUrl = getStationApiUrl('/streamers');
 const newArtUrl = getStationApiUrl('/streamers/art');
 const scheduleUrl = getStationApiUrl('/streamers/schedule');
+
+const quotaUrl = getStationApiUrl(`/quota/${StorageLocationTypes.StationRecordings}`);
+
+const {axios} = useAxios();
+
+const {data: props, isLoading: propsLoading} = useQuery<ApiStationsVueStreamersProps>({
+    queryKey: queryKeyWithStation(
+        [
+            QueryKeys.StationSftpUsers,
+            'props'
+        ]
+    ),
+    queryFn: async ({signal}) => {
+        const {data} = await axios.get<ApiStationsVueStreamersProps>(propsUrl.value, {signal});
+        return data;
+    }
+});
 
 const {$gettext} = useTranslate();
 
@@ -144,13 +172,17 @@ const fields: DataTableField[] = [
     {key: 'actions', label: $gettext('Actions'), sortable: false, class: 'shrink'}
 ];
 
-const $dataTable = useTemplateRef('$dataTable');
-const {refresh: refreshDatatable} = useHasDatatable($dataTable);
+const listItemProvider = useApiItemProvider(
+    listUrl,
+    queryKeyWithStation([
+        QueryKeys.StationStreamers
+    ])
+);
 
 const $scheduleTab = useTemplateRef('$scheduleTab');
 
 const relist = () => {
-    refreshDatatable();
+    void listItemProvider.refresh();
     $scheduleTab.value?.refresh();
 }
 
@@ -163,12 +195,12 @@ const doCalendarClick = (event: EventImpl) => {
 
 const $broadcastsModal = useTemplateRef('$broadcastsModal');
 
-const doShowBroadcasts = (listUrl, batchUrl) => {
-    $broadcastsModal.value?.open(listUrl, batchUrl);
+const doShowBroadcasts = (id: number, listUrl: string, batchUrl: string) => {
+    $broadcastsModal.value?.open(id, listUrl, batchUrl);
 };
 
 const {doDelete} = useConfirmAndDelete(
     $gettext('Delete Streamer?'),
-    relist
+    () => relist()
 );
 </script>

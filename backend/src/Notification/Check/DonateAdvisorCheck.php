@@ -6,9 +6,9 @@ namespace App\Notification\Check;
 
 use App\Container\EnvironmentAwareTrait;
 use App\Entity\Api\Notification;
+use App\Enums\FlashLevels;
 use App\Event\GetNotifications;
 use App\Exception\Http\RateLimitExceededException;
-use App\Session\FlashLevels;
 
 final class DonateAdvisorCheck
 {
@@ -29,17 +29,18 @@ final class DonateAdvisorCheck
             return;
         }
 
-        $notification = new Notification();
-        $notification->title = __('AzuraCast is free and open-source software.');
-        $notification->body = __(
-            'If you are enjoying AzuraCast, please consider donating to support our work. We depend ' .
-            'on donations to build new features, fix bugs, and keep AzuraCast modern, accessible and free.',
+        $event->addNotification(
+            new Notification(
+                id: 'notification-donation',
+                title: __('AzuraCast is free and open-source software.'),
+                body: __(
+                    'If you are enjoying AzuraCast, please consider donating to support our work. We depend ' .
+                    'on donations to build new features, fix bugs, and keep AzuraCast modern, accessible and free.',
+                ),
+                type: FlashLevels::Info,
+                actionLabel: __('Donate to AzuraCast'),
+                actionUrl: 'https://donate.azuracast.com/'
+            )
         );
-        $notification->type = FlashLevels::Info->value;
-
-        $notification->actionLabel = __('Donate to AzuraCast');
-        $notification->actionUrl = 'https://donate.azuracast.com/';
-
-        $event->addNotification($notification);
     }
 }

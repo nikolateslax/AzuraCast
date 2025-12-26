@@ -37,18 +37,13 @@ import {useClipboard} from "@vueuse/core";
 import Modal from "~/components/Common/Modal.vue";
 import {useHasModal} from "~/functions/useHasModal.ts";
 
-const logs = ref('Loading...');
+const logs = ref<string>('Loading...');
 
 const $modal = useTemplateRef('$modal');
 const {show: showModal, hide} = useHasModal($modal);
 
-const show = (newLogs) => {
-    const logDisplay = [];
-    newLogs.forEach((log) => {
-        logDisplay.push(log);
-    });
-
-    logs.value = logDisplay.join('');
+const show = (newLogs: string[]) => {
+    logs.value = newLogs.slice().join('');
     showModal();
 };
 

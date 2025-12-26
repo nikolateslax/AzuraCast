@@ -13,37 +13,27 @@
         >
             <tabs content-class="mt-3">
                 <admin-stations-profile-form
-                    v-model:form="form"
                     :timezones="timezones"
                 />
 
                 <admin-stations-frontend-form
-                    v-model:form="form"
                     :is-rsas-installed="isRsasInstalled"
                     :is-shoutcast-installed="isShoutcastInstalled"
                     :countries="countries"
                 />
 
                 <admin-stations-backend-form
-                    v-model:form="form"
                     :is-stereo-tool-installed="isStereoToolInstalled"
                 />
 
-                <admin-stations-hls-form
-                    v-model:form="form"
-                />
+                <admin-stations-hls-form/>
 
-                <admin-stations-requests-form
-                    v-model:form="form"
-                />
+                <admin-stations-requests-form/>
 
-                <admin-stations-streamers-form
-                    v-model:form="form"
-                />
+                <admin-stations-streamers-form/>
 
                 <admin-stations-admin-form
                     v-if="showAdminTab"
-                    v-model:form="form"
                     :is-edit-mode="isEditMode"
                 />
             </tabs>
@@ -66,39 +56,31 @@
 </template>
 
 <script setup lang="ts">
-import AdminStationsProfileForm from "./Form/ProfileForm.vue";
-import AdminStationsFrontendForm from "./Form/FrontendForm.vue";
-import AdminStationsBackendForm from "./Form/BackendForm.vue";
-import AdminStationsAdminForm from "./Form/AdminForm.vue";
-import AdminStationsHlsForm from "./Form/HlsForm.vue";
-import AdminStationsRequestsForm from "./Form/RequestsForm.vue";
-import AdminStationsStreamersForm from "./Form/StreamersForm.vue";
-import {computed, nextTick, ref, watch} from "vue";
-import {useNotify} from "~/functions/useNotify";
-import {useAxios} from "~/vendor/axios";
+import AdminStationsProfileForm from "~/components/Admin/Stations/Form/ProfileForm.vue";
+import AdminStationsFrontendForm from "~/components/Admin/Stations/Form/FrontendForm.vue";
+import AdminStationsBackendForm from "~/components/Admin/Stations/Form/BackendForm.vue";
+import AdminStationsAdminForm from "~/components/Admin/Stations/Form/AdminForm.vue";
+import AdminStationsHlsForm from "~/components/Admin/Stations/Form/HlsForm.vue";
+import AdminStationsRequestsForm from "~/components/Admin/Stations/Form/RequestsForm.vue";
+import AdminStationsStreamersForm from "~/components/Admin/Stations/Form/StreamersForm.vue";
+import {computed, nextTick, onMounted, ref, watch} from "vue";
+import {useNotify} from "~/components/Common/Toasts/useNotify.ts";
+import {getErrorAsString, useAxios} from "~/vendor/axios";
 import mergeExisting from "~/functions/mergeExisting";
-import {useVuelidateOnForm} from "~/functions/useVuelidateOnForm";
-import Loading from '~/components/Common/Loading.vue';
+import Loading from "~/components/Common/Loading.vue";
 import Tabs from "~/components/Common/Tabs.vue";
-import {GlobalPermission, userAllowed} from "~/acl";
+import {ApiAdminVueStationsFormProps, GlobalPermissions} from "~/entities/ApiInterfaces.ts";
+import {storeToRefs} from "pinia";
+import {useAdminStationsForm} from "~/components/Admin/Stations/Form/form.ts";
+import {useUserAllowed} from "~/functions/useUserAllowed.ts";
 
 defineOptions({
     inheritAttrs: false
 });
 
-export interface StationFormParentProps {
-    // Profile
-    timezones: Record<string, string>,
-    // Frontend
-    isRsasInstalled?: boolean,
-    isShoutcastInstalled?: boolean,
-    isStereoToolInstalled?: boolean,
-    countries: Record<string, string>
-}
-
-interface StationFormProps extends StationFormParentProps {
+interface StationFormProps extends ApiAdminVueStationsFormProps {
     createUrl?: string,
-    editUrl?: string,
+    editUrl?: string | null,
     isEditMode: boolean,
     isModal?: boolean
 }
@@ -109,23 +91,26 @@ const props = withDefaults(
         isRsasInstalled: false,
         isShoutcastInstalled: false,
         isStereoToolInstalled: false,
+        editUrl: null,
         isModal: false
     }
 );
 
 const emit = defineEmits<{
-    (e: 'error', error: string): void,
     (e: 'submitted'): void,
     (e: 'loadingUpdate', loading: boolean): void,
     (e: 'validUpdate', valid: boolean): void
 }>();
 
-const showAdminTab = userAllowed(GlobalPermission.Stations);
+const {userAllowed} = useUserAllowed();
+const showAdminTab = userAllowed(GlobalPermissions.Stations);
 
-const {form, resetForm, v$, ifValid} = useVuelidateOnForm();
+const formStore = useAdminStationsForm();
+const {form, r$} = storeToRefs(formStore);
+const {$reset: resetForm} = formStore;
 
 const isValid = computed(() => {
-    return !v$.value?.$invalid;
+    return !r$.value?.$invalid;
 });
 
 watch(isValid, (newValue) => {
@@ -138,7 +123,7 @@ watch(isLoading, (newValue) => {
     emit('loadingUpdate', newValue);
 });
 
-const error = ref(null);
+const error = ref<string | null>(null);
 
 const clear = () => {
     resetForm();
@@ -150,46 +135,60 @@ const clear = () => {
 const {notifySuccess} = useNotify();
 const {axios} = useAxios();
 
-const doLoad = () => {
+const doLoad = async () => {
+    if (!props.editUrl) {
+        return;
+    }
+
     isLoading.value = true;
 
-    axios.get(props.editUrl).then(({data}) => {
+    try {
+        const {data} = await axios.get(props.editUrl);
         form.value = mergeExisting(form.value, data);
-    }).catch((err) => {
-        emit('error', err);
-    }).finally(() => {
+    } finally {
         isLoading.value = false;
-    });
+    }
 };
 
-const reset = () => {
-    void nextTick(() => {
-        clear();
-        if (props.isEditMode) {
-            doLoad();
-        }
-    });
+const reset = async () => {
+    await nextTick();
+
+    clear();
+    if (props.isEditMode) {
+        void doLoad();
+    }
 };
 
-const submit = () => {
-    ifValid(() => {
-        error.value = null;
+onMounted(() => {
+    if (!props.isModal) {
+        void reset();
+    }
+});
 
-        axios({
+const submit = async () => {
+    const apiUrl = (props.isEditMode) ? props.editUrl : props.createUrl;
+
+    const {valid} = await r$.value.$validate();
+    if (!valid || !apiUrl) {
+        return;
+    }
+
+    error.value = null;
+
+    try {
+        await axios({
             method: (props.isEditMode)
                 ? 'PUT'
                 : 'POST',
-            url: (props.isEditMode)
-                ? props.editUrl
-                : props.createUrl,
+            url: apiUrl,
             data: form.value
-        }).then(() => {
-            notifySuccess();
-            emit('submitted');
-        }).catch((err) => {
-            error.value = err.response.data.message;
         });
-    });
+
+        notifySuccess();
+        emit('submitted');
+    } catch (e) {
+        error.value = getErrorAsString(e);
+    }
 };
 
 defineExpose({

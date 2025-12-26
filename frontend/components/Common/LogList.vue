@@ -14,23 +14,17 @@
 </template>
 
 <script setup lang="ts">
-import {useAsyncState} from "@vueuse/core";
-import {useAxios} from "~/vendor/axios";
+import {ApiLogType} from "~/entities/ApiInterfaces.ts";
 
-const props = defineProps<{
-    url: string
+defineProps<{
+    logs: Required<ApiLogType>[]
 }>();
 
-const emit = defineEmits(['view']);
+const emit = defineEmits<{
+    (e: 'view', url: string, isStreaming: boolean): void
+}>();
 
-const {axios} = useAxios();
-
-const {state: logs} = useAsyncState(
-    () => axios.get(props.url).then((r) => r.data.logs),
-    []
-);
-
-const viewLog = (url, isStreaming) => {
+const viewLog = (url: string, isStreaming: boolean) => {
     emit('view', url, isStreaming);
 };
 </script>

@@ -1,9 +1,9 @@
 // noinspection JSDeprecatedSymbols
 
-import {createInjectionState} from "@vueuse/core";
 import {computed, ref} from "vue";
+import createRequiredInjectionState from "~/functions/createRequiredInjectionState.ts";
 
-export const [useProvideWebDjNode, useInjectWebDjNode] = createInjectionState(
+export const [useProvideWebDjNode, useInjectWebDjNode] = createRequiredInjectionState(
     (webcaster) => {
         const { connect: connectSocket } = webcaster;
 
@@ -77,9 +77,9 @@ export const [useProvideWebDjNode, useInjectWebDjNode] = createInjectionState(
             return streamNode;
         });
 
-        let mediaRecorder;
+        let mediaRecorder: MediaRecorder;
 
-        const startStream = (username = null, password = null) => {
+        const startStream = (username: string | null = null, password: string | null = null) => {
             void context.value.resume();
 
             mediaRecorder = new MediaRecorder(

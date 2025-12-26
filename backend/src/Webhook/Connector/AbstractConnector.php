@@ -34,7 +34,7 @@ abstract class AbstractConnector implements ConnectorInterface
             $this->logger->debug(
                 sprintf(
                     'Webhook "%s" will not run for triggers: %s; skipping...',
-                    $webhook->getName(),
+                    $webhook->name,
                     implode(', ', $triggers)
                 )
             );
@@ -46,7 +46,7 @@ abstract class AbstractConnector implements ConnectorInterface
             $this->logger->notice(
                 sprintf(
                     'Webhook "%s" has run less than %d seconds ago; skipping...',
-                    $webhook->getName(),
+                    $webhook->name,
                     $rateLimitTime
                 )
             );
@@ -63,22 +63,16 @@ abstract class AbstractConnector implements ConnectorInterface
      */
     protected function webhookShouldTrigger(StationWebhook $webhook, array $triggers = []): bool
     {
-        if (!$webhook->hasTriggers()) {
+        if (empty($webhook->triggers ?? [])) {
             return true;
         }
 
-        foreach ($triggers as $trigger) {
-            if ($webhook->hasTrigger($trigger)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($triggers, fn($trigger) => $webhook->hasTrigger($trigger));
     }
 
     protected function getRateLimitTime(StationWebhook $webhook): ?int
     {
-        $config = $webhook->getConfig();
+        $config = $webhook->config ?? [];
         return Types::intOrNull($config[self::RATE_LIMIT_KEY] ?? null);
     }
 
@@ -131,8 +125,8 @@ abstract class AbstractConnector implements ConnectorInterface
         return new InvalidArgumentException(
             sprintf(
                 'Webhook "%s" (type "%s") is missing necessary configuration. Skipping...',
-                $webhook->getName(),
-                $webhook->getType()->value
+                $webhook->name,
+                $webhook->type->value
             ),
         );
     }
@@ -147,7 +141,7 @@ abstract class AbstractConnector implements ConnectorInterface
             $this->logger->error(
                 sprintf(
                     'Webhook "%s" returned unsuccessful response code %d.',
-                    $webhook->getName(),
+                    $webhook->name,
                     $responseStatus
                 )
             );
@@ -162,7 +156,7 @@ abstract class AbstractConnector implements ConnectorInterface
         $this->logger->debug(
             sprintf(
                 'Webhook "%s" returned response code %d',
-                $webhook->getName(),
+                $webhook->name,
                 $response->getStatusCode()
             ),
             $debugLogInfo

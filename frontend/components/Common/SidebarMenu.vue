@@ -1,7 +1,7 @@
 <template>
     <ul class="navdrawer-nav">
         <li
-            v-for="category in menu.categories"
+            v-for="category in menu"
             :key="category.key"
             class="nav-item"
         >
@@ -11,9 +11,10 @@
                 :to="category.url"
                 class="nav-link"
             >
-                <icon
+                <component
+                    v-if="category.icon"
+                    :is="category.icon()"
                     class="navdrawer-nav-icon"
-                    :icon="category.icon"
                 />
                 <span class="might-overflow">{{ category.label }}</span>
             </router-link>
@@ -23,15 +24,16 @@
                 class="nav-link"
                 :class="getLinkClass(category)"
             >
-                <icon
+                <component
+                    v-if="category.icon"
+                    :is="category.icon()"
                     class="navdrawer-nav-icon"
-                    :icon="category.icon"
                 />
                 <span class="might-overflow">{{ category.label }}</span>
-                <icon
+
+                <icon-ic-open-in-new
                     v-if="category.external"
                     class="sm ms-2"
-                    :icon="IconOpenInNew"
                     :aria-label="$gettext('External')"
                 />
             </a>
@@ -66,10 +68,10 @@
                             :title="item.title"
                         >
                             <span class="might-overflow">{{ item.label }}</span>
-                            <icon
+
+                            <icon-ic-open-in-new
                                 v-if="item.external"
                                 class="sm ms-2"
-                                :icon="IconOpenInNew"
                                 :aria-label="$gettext('External')"
                             />
                         </a>
@@ -81,20 +83,19 @@
 </template>
 
 <script setup lang="ts">
-import Icon from "~/components/Common/Icon.vue";
 import {useRoute} from "vue-router";
-import {some} from "lodash";
-import {IconOpenInNew} from "~/components/Common/icons.ts";
-import {MenuCategory, MenuRouteBasedUrl, MenuRouteUrl, MenuSubCategory, ReactiveMenu} from "~/functions/filterMenu.ts";
+import {some} from "es-toolkit/compat";
+import {MenuCategory, MenuRouteBasedUrl, MenuRouteUrl, MenuSubCategory} from "~/functions/filterMenu.ts";
+import IconIcOpenInNew from "~icons/ic/baseline-open-in-new";
 
 defineProps<{
-    menu: ReactiveMenu
+    menu: MenuCategory[]
 }>();
 
 const currentRoute = useRoute();
 
-const isRouteLink = (url: MenuRouteUrl): url is MenuRouteBasedUrl => {
-    return (typeof (url) !== 'undefined')
+const isRouteLink = (url?: MenuRouteUrl): url is MenuRouteBasedUrl => {
+    return (url !== undefined)
         && (typeof (url) !== 'string');
 };
 

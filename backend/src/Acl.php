@@ -59,7 +59,8 @@ final class Acl
     {
         $sql = $this->em->createQuery(
             <<<'DQL'
-                SELECT rp.station_id, rp.role_id, rp.action_name FROM App\Entity\RolePermission rp
+                SELECT IDENTITY(rp.station) AS station_id, IDENTITY(rp.role) AS role_id, rp.action_name 
+                FROM App\Entity\RolePermission rp
             DQL
         );
 
@@ -87,7 +88,7 @@ final class Acl
     }
 
     /**
-     * @return array
+     * @return PermissionsArray
      */
     public function listPermissions(): array
     {
@@ -151,21 +152,21 @@ final class Acl
         }
 
         if ($stationId instanceof Station) {
-            $stationId = $stationId->getId();
+            $stationId = $stationId->id;
         }
 
-        $numRoles = $user->getRoles()->count();
+        $numRoles = $user->roles->count();
         if ($numRoles > 0) {
             if ($numRoles === 1) {
                 /** @var Role $role */
-                $role = $user->getRoles()->first();
+                $role = $user->roles->first();
 
-                return $this->roleAllowed($role->getIdRequired(), $action, $stationId);
+                return $this->roleAllowed($role->id, $action, $stationId);
             }
 
             $roles = [];
-            foreach ($user->getRoles() as $role) {
-                $roles[] = $role->getId();
+            foreach ($user->roles as $role) {
+                $roles[] = $role->id;
             }
 
             return $this->roleAllowed($roles, $action, $stationId);
@@ -187,7 +188,7 @@ final class Acl
         Station|int|null $stationId = null
     ): bool {
         if ($stationId instanceof Station) {
-            $stationId = $stationId->getId();
+            $stationId = $stationId->id;
         }
 
         if ($action instanceof PermissionInterface) {
@@ -196,24 +197,12 @@ final class Acl
 
         // Iterate through an array of roles and return with the first "true" response, or "false" otherwise.
         if (is_array($roleId)) {
-            foreach ($roleId as $r) {
-                if ($this->roleAllowed($r, $action, $stationId)) {
-                    return true;
-                }
-            }
-
-            return false;
+            return array_any($roleId, fn($r) => $this->roleAllowed($r, $action, $stationId));
         }
 
         // If multiple actions are supplied, treat the list as "x OR y OR z", returning if any action is allowed.
         if (is_array($action)) {
-            foreach ($action as $a) {
-                if ($this->roleAllowed($roleId, $a, $stationId)) {
-                    return true;
-                }
-            }
-
-            return false;
+            return array_any($action, fn($a) => $this->roleAllowed($roleId, $a, $stationId));
         }
 
         if (!empty($this->actions[$roleId])) {

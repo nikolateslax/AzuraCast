@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import {computed, ref, toRef, watch} from "vue";
 import PaginationItem from "~/components/Common/PaginationItem.vue";
-import {clamp} from "lodash";
+import {clamp} from "es-toolkit/compat";
 
 const props = withDefaults(
     defineProps<{
@@ -80,7 +80,10 @@ const props = withDefaults(
     }
 );
 
-const emit = defineEmits(['update:currentPage', 'change']);
+const emit = defineEmits<{
+    (e: 'update:currentPage', value: number): void,
+    (e: 'change', value: number): void
+}>();
 
 const pageCount = computed(() => Math.max(
     1,

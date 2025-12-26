@@ -7,7 +7,7 @@
             <form-group-field
                 id="form_config_to"
                 class="col-md-12"
-                :field="v$.config.to"
+                :field="r$.config.to"
                 :label="$gettext('Message Recipient(s)')"
                 :description="$gettext('E-mail addresses can be separated by commas.')"
             />
@@ -19,15 +19,17 @@
             <form-group-field
                 id="form_config_subject"
                 class="col-md-12"
-                :field="v$.config.subject"
+                :field="r$.config.subject"
                 :label="$gettext('Message Subject')"
             />
 
             <form-group-field
                 id="form_config_message"
                 class="col-md-12"
-                :field="v$.config.message"
+                :field="r$.config.message"
                 :label="$gettext('Message Body')"
+                input-type="textarea"
+                :input-attrs="{rows: 4}"
             />
         </div>
     </tab>
@@ -35,19 +37,23 @@
 
 <script setup lang="ts">
 import FormGroupField from "~/components/Form/FormGroupField.vue";
-import CommonFormattingInfo from "./Common/FormattingInfo.vue";
-import {useVuelidateOnFormTab} from "~/functions/useVuelidateOnFormTab";
-import {required} from "@vuelidate/validators";
+import CommonFormattingInfo from "~/components/Stations/Webhooks/Form/Common/FormattingInfo.vue";
 import Tab from "~/components/Common/Tab.vue";
 import {WebhookComponentProps} from "~/components/Stations/Webhooks/EditModal.vue";
-import {GenericForm} from "~/entities/Forms.ts";
+import {useStationsWebhooksForm} from "~/components/Stations/Webhooks/Form/form.ts";
+import {useFormTabClass} from "~/functions/useFormTabClass.ts";
+import {useAppScopedRegle} from "~/vendor/regle.ts";
+import {required} from "@regle/rules";
+import {storeToRefs} from "pinia";
+import {Ref} from "vue";
+import {WebhookRecordCommon, WebhookRecordEmail} from "~/entities/Webhooks.ts";
 
 defineProps<WebhookComponentProps>();
 
-const form = defineModel<GenericForm>('form');
+const {form} = storeToRefs(useStationsWebhooksForm());
 
-const {v$, tabClass} = useVuelidateOnFormTab(
-    form,
+const {r$} = useAppScopedRegle(
+    form as Ref<WebhookRecordCommon & WebhookRecordEmail>,
     {
         config: {
             to: {required},
@@ -55,12 +61,10 @@ const {v$, tabClass} = useVuelidateOnFormTab(
             message: {required}
         }
     },
-    () => ({
-        config: {
-            to: '',
-            subject: '',
-            message: ''
-        }
-    })
+    {
+        namespace: 'station-webhooks'
+    }
 );
+
+const tabClass = useFormTabClass(r$);
 </script>

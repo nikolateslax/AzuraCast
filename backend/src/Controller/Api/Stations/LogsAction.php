@@ -6,15 +6,65 @@ namespace App\Controller\Api\Stations;
 
 use App\Controller\Api\Traits\HasLogViewer;
 use App\Controller\SingleActionInterface;
+use App\Entity\Api\LogContents;
 use App\Entity\Api\LogType;
 use App\Entity\Station;
 use App\Exception;
 use App\Http\Response;
 use App\Http\ServerRequest;
+use App\OpenApi;
 use App\Radio\Adapters;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 
-final class LogsAction implements SingleActionInterface
+#[
+    OA\Get(
+        path: '/station/{station_id}/logs',
+        operationId: 'getStationLogs',
+        summary: 'Return a list of available logs for the given station.',
+        tags: [OpenApi::TAG_STATIONS],
+        parameters: [
+            new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
+        ],
+        responses: [
+            new OpenApi\Response\Success(
+                content: new OA\JsonContent(
+                    type: 'array',
+                    items: new OA\Items(ref: LogType::class)
+                )
+            ),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\NotFound(),
+            new OpenApi\Response\GenericError(),
+        ]
+    ),
+    OA\Get(
+        path: '/station/{station_id}/log/{key}',
+        operationId: 'getStationLog',
+        summary: 'View a specific log contents for the given station.',
+        tags: [OpenApi::TAG_STATIONS],
+        parameters: [
+            new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),
+            new OA\Parameter(
+                name: 'key',
+                description: 'Log Key from listing return.',
+                in: 'path',
+                required: true,
+                schema: new OA\Schema(type: 'string')
+            ),
+        ],
+        responses: [
+            new OpenApi\Response\Success(
+                content: new OA\JsonContent(
+                    ref: LogContents::class
+                )
+            ),
+            new OpenApi\Response\AccessDenied(),
+            new OpenApi\Response\GenericError(),
+        ]
+    )
+]
+class LogsAction implements SingleActionInterface
 {
     use HasLogViewer;
 
@@ -38,23 +88,21 @@ final class LogsAction implements SingleActionInterface
         if (null === $log) {
             $router = $request->getRouter();
             return $response->withJson(
-                [
-                    'logs' => array_map(
-                        function (LogType $row) use ($router, $station): LogType {
-                            $row->links = [
-                                'self' => $router->named(
-                                    'api:stations:log',
-                                    [
-                                        'station_id' => $station->getIdRequired(),
-                                        'log' => $row->key,
-                                    ]
-                                ),
-                            ];
-                            return $row;
-                        },
-                        $logTypes
-                    ),
-                ]
+                array_map(
+                    function (LogType $row) use ($router, $station): LogType {
+                        $row->links = [
+                            'self' => $router->named(
+                                'api:stations:log',
+                                [
+                                    'station_id' => $station->id,
+                                    'log' => $row->key,
+                                ]
+                            ),
+                        ];
+                        return $row;
+                    },
+                    $logTypes
+                ),
             );
         }
 
@@ -64,15 +112,6 @@ final class LogsAction implements SingleActionInterface
             throw new Exception('Invalid log file specified.');
         }
 
-        $frontendConfig = $station->getFrontendConfig();
-        $filteredTerms = [
-            $station->getAdapterApiKey(),
-            $frontendConfig->getAdminPassword(),
-            $frontendConfig->getRelayPassword(),
-            $frontendConfig->getSourcePassword(),
-            $frontendConfig->getStreamerPassword(),
-        ];
-
         $logType = $logTypes[$log];
 
         return $this->streamLogToResponse(
@@ -80,14 +119,14 @@ final class LogsAction implements SingleActionInterface
             $response,
             $logType->path,
             $logType->tail,
-            $filteredTerms
+            $station->getFilteredPasswords()
         );
     }
 
     /**
      * @return LogType[]
      */
-    private function getStationLogs(Station $station): array
+    protected function getStationLogs(Station $station): array
     {
         return [
             ...$this->adapters->getBackendAdapter($station)?->getLogTypes($station) ?? [],

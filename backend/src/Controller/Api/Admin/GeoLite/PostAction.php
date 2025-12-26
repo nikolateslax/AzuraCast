@@ -6,13 +6,42 @@ namespace App\Controller\Api\Admin\GeoLite;
 
 use App\Container\SettingsAwareTrait;
 use App\Controller\SingleActionInterface;
+use App\Entity\Api\Admin\GeoLiteStatus;
 use App\Http\Response;
 use App\Http\ServerRequest;
+use App\OpenApi;
 use App\Service\IpGeolocator\GeoLite;
 use App\Sync\Task\UpdateGeoLiteTask;
 use App\Utilities\Types;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 
+#[OA\Post(
+    path: '/admin/geolite',
+    operationId: 'postGeoLite',
+    summary: 'Set the GeoLite MaxMindDB Database license key.',
+    requestBody: new OA\RequestBody(
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(
+                    property: 'key',
+                    type: 'string',
+                    nullable: true,
+                ),
+            ]
+        )
+    ),
+    tags: [OpenApi::TAG_ADMIN],
+    responses: [
+        new OpenApi\Response\Success(
+            content: new OA\JsonContent(
+                ref: GeoLiteStatus::class
+            )
+        ),
+        new OpenApi\Response\AccessDenied(),
+        new OpenApi\Response\GenericError(),
+    ]
+)]
 final class PostAction implements SingleActionInterface
 {
     use SettingsAwareTrait;
@@ -27,12 +56,11 @@ final class PostAction implements SingleActionInterface
         Response $response,
         array $params
     ): ResponseInterface {
-        $newKey = trim(
-            Types::string($request->getParsedBodyParam('geolite_license_key'))
-        );
+        $body = (array)$request->getParsedBody();
+        $newKey = Types::stringOrNull($body['key'] ?? $body['geolite_license_key'] ?? null, true);
 
         $settings = $this->readSettings();
-        $settings->setGeoliteLicenseKey($newKey);
+        $settings->geolite_license_key = $newKey;
         $this->writeSettings($settings);
 
         if (!empty($newKey)) {
@@ -43,9 +71,11 @@ final class PostAction implements SingleActionInterface
             $version = null;
         }
 
-        return $response->withJson([
-            'success' => true,
-            'version' => $version,
-        ]);
+        return $response->withJson(
+            new GeoLiteStatus(
+                $version,
+                $newKey
+            )
+        );
     }
 }
